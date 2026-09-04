@@ -213,11 +213,12 @@
                 border-radius:8px;padding:8px 14px;transition:.15s}
   .btn-cabecera:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
   .btn-cabecera.activo{background:#fff;color:var(--acento);border-color:#fff}
-  /* el botón principal se distingue de los de consulta */
-  .btn-cabecera.principal{background:#fff;color:var(--acento);border-color:#fff}
-  .btn-cabecera.principal:hover{background:#e8eefb;border-color:#e8eefb}
-  .btn-cabecera.principal::before{content:"+";font-size:16px;font-weight:700;
-                                  line-height:0.9}
+  /* "Nuevo expediente" es la acción de arranque: en verde, siempre a la vista */
+  #btn-nuevo{background:var(--ok);border-color:var(--ok);color:#fff}
+  #btn-nuevo:hover{background:#0c6641;border-color:#0c6641}
+  #btn-nuevo::before{content:"+";font-size:16px;font-weight:700;line-height:0.9}
+  /* desde historial y ajustes es la vía de vuelta: se marca con un halo */
+  #btn-nuevo.principal{box-shadow:0 0 0 3px rgba(255,255,255,.28)}
   .mes{border:1px solid var(--linea);border-radius:10px;margin-bottom:12px;
        overflow:hidden;background:var(--panel)}
   .mes>summary{padding:12px 16px;cursor:pointer;font-weight:600;font-size:14px;
@@ -238,8 +239,8 @@
   .mini{font:inherit;font-size:12px;padding:5px 11px;border-radius:6px;
         border:1px solid var(--linea);background:#fff;cursor:pointer;color:var(--tinta)}
   .mini:hover{background:#eef3fb;border-color:var(--acento)}
-  .mini.riesgo:hover{background:var(--falta-f);border-color:var(--falta);
-                     color:var(--falta)}
+  .mini.riesgo{border-color:#e39a9a;color:var(--falta)}
+  .mini.riesgo:hover{background:var(--falta-f);border-color:var(--falta)}
   .vacio{padding:26px;text-align:center;color:var(--suave);font-size:13.5px}
 
   /* ---------- preloader ---------- */
