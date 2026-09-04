@@ -1,8 +1,10 @@
 # Sistema de expedientes GEDO → Excel
 
 ## Cómo se usa
-Doble clic en **Iniciar sistema.command** (macOS) o `python3 motor/app.py`.
-Se abre el navegador solo. Para cerrarlo, cerrá la ventana de la terminal.
+Doble clic en **Iniciar sistema.command** (macOS), **Iniciar sistema.bat**
+(Windows) o `python3 motor/app.py`. Se abre como una ventana de aplicación:
+sin barra de direcciones ni pestañas, con su ícono propio. **Cerrando esa
+ventana se cierra el sistema.**
 
 Flujo: soltás los PDFs de UN expediente → revisás la fila → "Extraer datos a Excel".
 
@@ -13,6 +15,7 @@ Flujo: soltás los PDFs de UN expediente → revisás la fila → "Extraer datos
     motor/almacen.py     SQLite (fuente de verdad) + exportación a Excel
     motor/app.py         servidor local
     motor/ui.html        la pantalla (se reusa tal cual en Tauri)
+    motor/ventana.py     abre la interfaz como ventana de app, no como pestaña
     datos/               la base y el Excel generado
     ejemplos/            PDFs de prueba
 
@@ -28,6 +31,13 @@ El Excel tiene una hoja **Todos** con el historial completo y una columna
 Corregir un expediente NO cambia su mes: sigue archivado donde se cargó.
 
 ## Decisiones de diseño
+- **Ventana de aplicación sin dependencias nuevas.** Se usa el modo `--app` del
+  navegador (Edge viene con Windows), que da una ventana sin barra de
+  direcciones ni pestañas y con su ícono en la barra de tareas. pywebview daría
+  una ventana nativa de verdad, pero empaquetarlo en Windows arrastra pythonnet
+  y suma peso y fragilidad al instalador; si está instalado se usa, y si no
+  se cae al modo `--app`. El navegador corre con un perfil propio, aislado de
+  la navegación personal y con la actividad de fondo apagada.
 - **SQLite manda, el Excel se regenera entero.** Nunca se le agregan filas al
   .xlsx. Así los duplicados, las correcciones, el borrado y las hojas por mes
   salen gratis.

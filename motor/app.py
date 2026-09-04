@@ -13,7 +13,6 @@ import uuid
 import sys
 import tempfile
 import urllib.parse
-import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from extractor import COLUMNAS, armar_expediente, _norm
 from rutas import EMPAQUETADA, abrir_archivo, carpeta_datos, recurso
 import almacen
+import ventana
 
 # Empaquetada la app corre sin consola: sin esto, un error queda invisible y
 # no hay forma de saber por que no arranco.
@@ -178,17 +178,42 @@ class Servidor(ThreadingHTTPServer):
     daemon_threads = True
 
 
-if __name__ == "__main__":
+def main():
     url = f"http://127.0.0.1:{PUERTO}"
     try:
         servidor = Servidor(("127.0.0.1", PUERTO), Handler)
-    except OSError as e:
+    except OSError:
         # le puede pasar a cualquiera que abra la app dos veces
         print(f"\nNo se pudo iniciar: el puerto {PUERTO} ya está en uso.")
         print("Probablemente el sistema ya esté abierto en otra ventana.")
         print(f"Abrí {url} en el navegador, o cerrá la otra ventana y reintentá.\n")
-        raise SystemExit(1)
+        return 1
+
+    # El servidor pasa a un hilo de fondo y la ventana queda al frente: asi,
+    # cuando la persona cierra la ventana, se cierra la aplicacion entera.
+    threading.Thread(target=servidor.serve_forever, daemon=True).start()
     print(f"Sistema de expedientes corriendo en {url}")
-    print("Cerrá esta ventana o Ctrl+C para detenerlo.")
-    webbrowser.open(url)
-    servidor.serve_forever()
+
+    try:
+        cerro = ventana.abrir(url)
+    except Exception as e:            # si la ventana falla, no perder la app
+        import traceback; traceback.print_exc()
+        print(f"No se pudo abrir la ventana ({e}); seguí en {url}")
+        cerro = False
+
+    if not cerro:
+        # quedo en una pestana comun: hay que sostener el proceso a mano
+        print("Cerrá esta ventana o Ctrl+C para detener el sistema.")
+        try:
+            while True:
+                threading.Event().wait(3600)
+        except KeyboardInterrupt:
+            pass
+
+    servidor.shutdown()
+    print("Sistema detenido.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
