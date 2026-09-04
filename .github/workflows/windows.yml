@@ -3,8 +3,16 @@ name: Instalador Windows
 # Se puede disparar a mano desde la pestaña Actions, o al etiquetar una version.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión a publicar (ej: 1.0.0). Vacío = solo artefactos, sin release"
+        required: false
+        default: ""
   push:
     tags: ["v*"]
+
+permissions:
+  contents: write        # necesario para crear el release
 
 jobs:
   compilar:
@@ -102,7 +110,11 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalador.iss
+          $version = "${{ inputs.version }}"
+          if (-not $version) { $version = "${{ github.ref_name }}" -replace '^v', '' }
+          if (-not $version) { $version = "0.0.0-prueba" }
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DVersion=$version instalador.iss
 
       - name: Publicar el instalador
         uses: actions/upload-artifact@v4
@@ -116,3 +128,46 @@ jobs:
         with:
           name: ExpedientesGEDO-portable
           path: dist/ExpedientesGEDO/
+
+      - name: Crear el release
+        # solo si se pidió una versión a mano, o si se empujó una etiqueta
+        if: inputs.version != '' || startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $etiqueta = "v$env:VERSION"
+          Compress-Archive -Path "dist\ExpedientesGEDO\*" `
+            -DestinationPath "salida\ExpedientesGEDO-$env:VERSION-portable.zip" -Force
+
+          $notas = @"
+          ## Instalación
+
+          Bajá **ExpedientesGEDO-$env:VERSION-instalador.exe** y ejecutalo.
+
+          Windows va a mostrar una advertencia de SmartScreen porque el
+          instalador no está firmado: *Más información* -> *Ejecutar de todas
+          formas*. Firmarlo requiere un certificado de firma de código.
+
+          La versión portable (.zip) no necesita instalación: se descomprime y
+          se ejecuta ExpedientesGEDO.exe.
+
+          Los datos (base, Excel y caché) quedan en la carpeta LOCALAPPDATA del
+          usuario, no junto a la aplicación: en Archivos de programa no se puede
+          escribir.
+          "@
+
+          # se consulta por código de salida y no por la salida de texto, que
+          # varía entre versiones de PowerShell
+          gh release view $etiqueta *> $null
+          $existe = ($LASTEXITCODE -eq 0)
+          $global:LASTEXITCODE = 0
+
+          $archivos = (Get-ChildItem salida\*).FullName
+          if ($existe) {
+            gh release upload $etiqueta $archivos --clobber
+          } else {
+            gh release create $etiqueta $archivos `
+              --title "Expedientes GEDO $env:VERSION" --notes $notas
+          }
+          Write-Host "Release $etiqueta publicado con $($archivos.Count) archivo(s)."

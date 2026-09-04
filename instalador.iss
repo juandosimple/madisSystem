@@ -1,6 +1,9 @@
 ; Instalador para Windows. Lo compila ISCC.exe (Inno Setup 6) en el workflow.
 #define Nombre    "Expedientes GEDO"
-#define Version   "1.0.0"
+; la versión la pasa el workflow con /DVersion=...
+#ifndef Version
+  #define Version "0.0.0-prueba"
+#endif
 #define Ejecutable "ExpedientesGEDO.exe"
 
 [Setup]

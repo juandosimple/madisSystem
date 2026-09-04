@@ -80,10 +80,16 @@ Windows, y la forma más simple es que lo haga GitHub gratis:
     git push -u origin main
 
 Después, en la pestaña **Actions** del repositorio → *Instalador Windows* →
-**Run workflow**. En unos minutos quedan dos archivos para descargar:
+**Run workflow**. Ahí se puede indicar una versión (por ejemplo `1.0.0`):
 
-    ExpedientesGEDO-instalador   el .exe que instala la app
-    ExpedientesGEDO-portable     la carpeta suelta, sin instalar
+- **Con versión** → además de compilar, publica un **Release** con el
+  instalador y el .zip portable adjuntos. Es lo que conviene para entregar.
+- **Sin versión** → solo deja *artifacts*, al final de la página de la corrida.
+  Sirven para probar; caducan a los 90 días y NO aparecen en Releases.
+
+También se dispara empujando una etiqueta:
+
+    git tag v1.0.0 && git push --tags
 
 El workflow instala Tesseract, lo empaqueta junto con la app (solo los idiomas
 español, inglés y OSD: el pack completo son ~700 MB), compila, **arranca el
