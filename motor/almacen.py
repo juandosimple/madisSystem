@@ -46,7 +46,9 @@ def conectar():
         archivos   TEXT NOT NULL,
         creado     TEXT NOT NULL,
         editado    TEXT NOT NULL,
-        mes        TEXT NOT NULL)""")
+        mes        TEXT NOT NULL,
+        estado     TEXT NOT NULL DEFAULT 'ok',
+        observacion TEXT NOT NULL DEFAULT '')""")
     _migrar(cx)
     cx.execute("""CREATE TABLE IF NOT EXISTS carreras (
         clave   TEXT NOT NULL,
@@ -58,6 +60,11 @@ def conectar():
 def _migrar(cx):
     """Agrega la columna mes a bases creadas antes de esta versión."""
     columnas = {c[1] for c in cx.execute("PRAGMA table_info(expedientes)")}
+    # los expedientes marcados para corregir no van al Excel hasta resolverse
+    if "estado" not in columnas:
+        cx.execute("ALTER TABLE expedientes ADD COLUMN estado TEXT NOT NULL DEFAULT 'ok'")
+        cx.execute("ALTER TABLE expedientes ADD COLUMN observacion TEXT NOT NULL DEFAULT ''")
+        cx.commit()
     if "mes" in columnas:
         return
     cx.execute("ALTER TABLE expedientes ADD COLUMN mes TEXT NOT NULL DEFAULT ''")
@@ -108,35 +115,42 @@ def existe(expediente):
     return r is not None
 
 
-def guardar(expediente, valores, archivos):
+def guardar(expediente, valores, archivos, estado="ok", observacion=""):
     """Alta o corrección. Al corregir se conserva el mes de importación
-    original: el archivo es por cuándo se cargó, no por cuándo se tocó."""
+    original: el archivo es por cuándo se cargó, no por cuándo se tocó.
+
+    estado 'observado' = el expediente tiene algo mal y necesita que una
+    persona lo arregle; no entra al Excel hasta resolverse.
+    """
     marca = ahora()
     cx = conectar()
     cx.execute("""INSERT INTO expedientes
-                    (expediente, datos, archivos, creado, editado, mes)
-                  VALUES (?,?,?,?,?,?)
+                    (expediente, datos, archivos, creado, editado, mes,
+                     estado, observacion)
+                  VALUES (?,?,?,?,?,?,?,?)
                   ON CONFLICT(expediente) DO UPDATE SET
                     datos=excluded.datos, archivos=excluded.archivos,
-                    editado=excluded.editado""",
+                    editado=excluded.editado, estado=excluded.estado,
+                    observacion=excluded.observacion""",
                (expediente, json.dumps(valores, ensure_ascii=False),
                 json.dumps(archivos, ensure_ascii=False),
-                marca, marca, mes_de(marca)))
+                marca, marca, mes_de(marca), estado, observacion))
     cx.commit(); cx.close()
 
 
 def obtener(expediente):
     cx = conectar()
-    fila = cx.execute("SELECT datos, archivos, creado, editado, mes "
-                      "FROM expedientes WHERE expediente = ?",
+    fila = cx.execute("SELECT datos, archivos, creado, editado, mes, estado, "
+                      "observacion FROM expedientes WHERE expediente = ?",
                       (expediente,)).fetchone()
     cx.close()
     if not fila:
         return None
-    datos, archivos, creado, editado, mes = fila
+    datos, archivos, creado, editado, mes, estado, observacion = fila
     return {"expediente": expediente, "valores": json.loads(datos),
             "archivos": json.loads(archivos), "creado": creado,
-            "editado": editado, "mes": mes}
+            "editado": editado, "mes": mes, "estado": estado,
+            "observacion": observacion}
 
 
 def eliminar(expediente):
@@ -151,7 +165,8 @@ def historial():
     """Los expedientes agrupados por mes de importación, del más nuevo al más
     viejo."""
     meses = {}
-    for expediente, valores, _archivos, creado, editado, mes in _filas():
+    for (expediente, valores, _archivos, creado, editado, mes,
+         estado, observacion) in _filas():
         meses.setdefault(mes, []).append({
             "expediente": expediente,
             "docente": " ".join(x for x in (valores.get("apellido"),
@@ -160,6 +175,8 @@ def historial():
             "materia": valores.get("materia", ""),
             "creado": creado,
             "editado": editado if editado != creado else "",
+            "estado": estado,
+            "observacion": observacion,
         })
     return [{"mes": m, "expedientes": sorted(e, key=lambda x: x["creado"], reverse=True)}
             for m, e in sorted(meses.items(), reverse=True)]
@@ -167,16 +184,17 @@ def historial():
 
 def _filas():
     cx = conectar()
-    filas = [(e, json.loads(d), json.loads(a), c, ed, m)
-             for e, d, a, c, ed, m in cx.execute(
-                 "SELECT expediente, datos, archivos, creado, editado, mes "
-                 "FROM expedientes ORDER BY creado")]
+    filas = [(e, json.loads(d), json.loads(a), c, ed, m, es, ob)
+             for e, d, a, c, ed, m, es, ob in cx.execute(
+                 "SELECT expediente, datos, archivos, creado, editado, mes, "
+                 "estado, observacion FROM expedientes ORDER BY creado")]
     cx.close()
     return filas
 
 
-def listar():
-    return [(e, v, a, c) for e, v, a, c, _ed, _m in _filas()]
+def listar(solo_ok=False):
+    return [(e, v, a, c) for e, v, a, c, _ed, _m, es, _ob in _filas()
+            if not solo_ok or es == "ok"]
 
 
 # ------------------------------------------------------- exportar Excel -----
@@ -197,10 +215,11 @@ def nombre_hoja(mes):
         return mes or "Sin fecha"
 
 
-def _escribir_hoja(ws, filas, con_importacion):
+def _escribir_hoja(ws, filas, con_importacion, extras=()):
     etiquetas = [etiqueta for _, etiqueta in COLUMNAS]
     if con_importacion:
         etiquetas.append("Importado")
+    etiquetas += list(extras)
     ws.append(etiquetas)
     for i in range(1, len(etiquetas) + 1):
         c = ws.cell(row=1, column=i)
@@ -208,10 +227,11 @@ def _escribir_hoja(ws, filas, con_importacion):
         c.fill = ENCABEZADO
         c.alignment = Alignment(vertical="center", wrap_text=True)
 
-    for _expediente, valores, _archivos, creado in filas:
+    for _expediente, valores, _archivos, creado, *resto in filas:
         fila = [valores.get(k, "") for k, _ in COLUMNAS]
         if con_importacion:
             fila.append(creado)
+        fila += list(resto)          # motivo, cuando hay hoja de observados
         ws.append(fila)
         r = ws.max_row
         for i, (clave, _) in enumerate(COLUMNAS, start=1):
@@ -220,7 +240,7 @@ def _escribir_hoja(ws, filas, con_importacion):
 
     anchos = {"Instituto": 18, "N° de expediente": 34, "Descripción": 40,
               "Materia": 42, "Carrera": 38, "Cantidad de firmas": 18,
-              "Importado": 20}
+              "Importado": 20, "Qué hay que corregir": 60}
     for i, etiqueta in enumerate(etiquetas, start=1):
         ws.column_dimensions[get_column_letter(i)].width = anchos.get(etiqueta, 16)
     ws.freeze_panes = "A2"
@@ -236,17 +256,27 @@ def exportar_excel(destino=None):
     """
     destino = Path(destino or BASE / "expedientes.xlsx")
     filas = _filas()
+    # Los marcados para corregir NO entran a las hojas normales: el expediente
+    # tiene algo mal y no debe seguir su curso hasta que alguien lo arregle.
+    buenos = [f for f in filas if f[6] == "ok"]
+    observados = [f for f in filas if f[6] != "ok"]
 
     wb = Workbook()
     todos = wb.active
     todos.title = "Todos"
-    _escribir_hoja(todos, [(e, v, a, c) for e, v, a, c, _ed, _m in filas], True)
+    _escribir_hoja(todos, [(e, v, a, c) for e, v, a, c, *_ in buenos], True)
 
     por_mes = {}
-    for e, v, a, c, _ed, mes in filas:
+    for e, v, a, c, _ed, mes, _es, _ob in buenos:
         por_mes.setdefault(mes, []).append((e, v, a, c))
     for mes in sorted(por_mes, reverse=True):
         _escribir_hoja(wb.create_sheet(nombre_hoja(mes)), por_mes[mes], False)
+
+    # pero quedan a la vista en su propia hoja: son trabajo pendiente
+    if observados:
+        _escribir_hoja(wb.create_sheet("Para corregir"),
+                       [(e, v, a, c, ob) for e, v, a, c, _ed, _m, _es, ob in observados],
+                       True, extras=("Qué hay que corregir",))
 
     wb.save(destino)
     return destino

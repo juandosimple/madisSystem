@@ -84,6 +84,29 @@
   #estado{font-size:13px;color:var(--suave)}
   .oculto{display:none}
 
+  /* ---------- elegir entre valores en conflicto ---------- */
+  .eleccion{display:flex;flex-direction:column;gap:7px;margin-top:2px}
+  .opcion{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;
+          border:1px solid var(--linea);border-radius:8px;cursor:pointer;
+          background:#fff;transition:.12s}
+  .opcion:hover{border-color:var(--acento);background:#f4f8ff}
+  .opcion input{width:auto;margin-top:2px;flex:none}
+  .opcion .v{font-weight:600;font-size:13px}
+  .opcion .q{display:block;font-weight:400;font-size:11.5px;color:var(--suave);
+             margin-top:2px}
+  .opcion.elegida{border-color:var(--acento);background:#eaf2ff;
+                  box-shadow:inset 0 0 0 1px var(--acento)}
+  .otro{margin-top:2px}
+
+  /* ---------- marcar para corregir ---------- */
+  #corregir{background:var(--aviso-f);border:1px solid #e8c98a;border-radius:10px;
+            padding:14px 16px;margin-top:16px}
+  #corregir p{margin:0 0 9px;font-size:13px}
+  #corregir textarea{width:100%;min-height:62px;padding:9px 11px;font:inherit;
+                     font-size:13px;border:1px solid #e0c088;border-radius:7px;
+                     resize:vertical;background:#fff}
+  .senal.observado{background:var(--aviso-f);color:var(--aviso)}
+
   /* ---------- ajustes ---------- */
   .engranaje{position:relative;width:40px;height:40px;padding:0;
              justify-content:center;font-size:20px}
@@ -257,8 +280,15 @@
       <div id="resumen"></div>
     <div class="campos" id="campos"></div>
       <div class="avisos" id="avisos"></div>
+      <div id="corregir" class="oculto">
+        <p><b>Este expediente no va a entrar al Excel.</b> Queda anotado como
+          pendiente hasta que alguien corrija el documento y lo vuelvas a cargar.</p>
+        <textarea id="motivo" placeholder="¿Qué hay que corregir? Por ejemplo: la carátula dice división A y el formulario dice D. Hay que pedir a la escuela que rectifique el formulario."></textarea>
+      </div>
+
       <div class="acciones">
         <button class="primario" id="btn-guardar">Extraer datos a Excel</button>
+        <button class="secundario" id="btn-corregir">Marcar para corregir</button>
         <button class="secundario" id="btn-abrir">Abrir Excel</button>
         <button class="secundario" id="btn-otro">Cargar otro expediente</button>
         <span id="estado"></span>
@@ -402,6 +432,8 @@ function avisarVacio(){
 /* ------------------------------------------------ render --------------- */
 function dibujar(d){
   if(d.columnas?.length) COLUMNAS_GUARDADAS = d.columnas;
+  $("#corregir").classList.add("oculto");
+  $("#btn-corregir").textContent = "Marcar para corregir";
   $("#docs").innerHTML = d.documentos.map(doc => `
     <div class="doc">
       <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
@@ -419,9 +451,23 @@ function dibujar(d){
                 ? " conflicto"
                 : c.estado === "revisar_lectura" ? " lectura"
                 : c.estado === "una_fuente" ? " pendiente" : "";
-    // si hay varias carreras aprendidas para este instituto+materia, se elige
+    // Cuando las fuentes se contradicen, la app NO elige: muestra los valores
+    // en juego y decide la persona. Elegir por mayoría sería inventar criterio
+    // sobre un documento administrativo.
     let control;
-    if(col.clave === "carrera" && d.carreras_sugeridas.length > 1){
+    if(c.opciones?.length > 1){
+      control = `<div class="eleccion">` + c.opciones.map((o, i) => `
+          <label class="opcion${o.valor === c.valor ? " elegida" : ""}">
+            <input type="radio" name="op-${col.clave}" value="${o.valor.replace(/"/g,"&quot;")}"
+                   ${o.valor === c.valor ? "checked" : ""}>
+            <span class="v">${o.valor}
+              <span class="q">según ${o.fuentes.join(", ")}</span></span>
+          </label>`).join("") + `
+          <input class="otro pendiente" id="f-${col.clave}"
+                 value="${(c.valor||"").replace(/"/g,"&quot;")}"
+                 placeholder="…o escribí el valor correcto">
+        </div>`;
+    } else if(col.clave === "carrera" && d.carreras_sugeridas.length > 1){
       control = `<select id="f-carrera" class="pendiente">
           <option value="">— elegí la carrera —</option>
           ${d.carreras_sugeridas.map(x => `<option>${x}</option>`).join("")}
@@ -450,6 +496,16 @@ function dibujar(d){
     : `<b>${ver} de ${total} datos verificados</b> en dos o más documentos.` +
       (ver < total ? ` Los ${total-ver} restantes aparecen en un solo lugar y no se pudieron contrastar.` : "");
 
+  // al elegir una opción se vuelca al campo, que es lo que se guarda
+  $("#campos").querySelectorAll(".eleccion input[type=radio]").forEach(r => {
+    r.addEventListener("change", e => {
+      const caja = e.target.closest(".eleccion").querySelector(".otro");
+      caja.value = e.target.value;
+      e.target.closest(".eleccion").querySelectorAll(".opcion")
+        .forEach(o => o.classList.toggle("elegida", o.contains(e.target)));
+    });
+  });
+
   const avisos = [...d.avisos];
   if(d.duplicado) avisos.unshift("Este expediente YA está cargado. Si lo guardás, "
                                  + "se actualiza la fila existente (no se duplica).");
@@ -461,29 +517,62 @@ function dibujar(d){
 }
 
 /* ------------------------------------------------ acciones ------------- */
-$("#btn-guardar").addEventListener("click", async () => {
+function valoresDelFormulario(){
   const valores = {};
   actual.columnas.forEach(col => {
     valores[col.clave] = ($("#f-" + col.clave)?.value || "").trim();
   });
-  if(!valores.carrera && !confirm("La carrera está vacía. ¿Exportar igual?")) return;
+  return valores;
+}
 
-  $("#btn-guardar").disabled = true;
+async function guardarExpediente({observado}){
+  const valores = valoresDelFormulario();
+  const observacion = observado ? $("#motivo").value.trim() : "";
+
+  if(observado && !observacion){
+    alert("Escribí qué hay que corregir. Ese texto es lo que va a leer quien " +
+          "tenga que arreglar el expediente.");
+    $("#motivo").focus();
+    return;
+  }
+  if(!observado && !valores.carrera &&
+     !confirm("La carrera está vacía. ¿Exportar igual?")) return;
+
+  const boton = observado ? $("#btn-corregir") : $("#btn-guardar");
+  boton.disabled = true;
   $("#estado").textContent = "Guardando…";
   let res;
   try{
     const r = await fetch("/guardar", {method:"POST",
-      body: JSON.stringify({valores, archivos: nombresArchivos})});
+      body: JSON.stringify({valores, archivos: nombresArchivos,
+                            observado, observacion})});
     res = await r.json();
   }catch(e){
-    $("#btn-guardar").disabled = false;
-    $("#estado").textContent = "";
+    boton.disabled = false; $("#estado").textContent = "";
     mostrar("caido");
     return;
   }
-  $("#btn-guardar").disabled = false;
+  boton.disabled = false;
   if(res.error){ $("#estado").textContent = ""; alert(res.error); return; }
-  $("#estado").textContent = `Listo — ${res.total} expediente(s) en el Excel.`;
+
+  $("#estado").textContent = observado
+    ? `Anotado como pendiente. No entró al Excel. (${res.observados} pendiente(s))`
+    : `Listo — ${res.total} expediente(s) en el Excel.`;
+}
+
+$("#btn-guardar").addEventListener("click", () => guardarExpediente({observado:false}));
+
+// Marcar para corregir: el expediente tiene algo mal y no debe seguir su curso
+// hasta que una persona lo arregle. Primero se pide el motivo.
+$("#btn-corregir").addEventListener("click", () => {
+  const caja = $("#corregir");
+  if(caja.classList.contains("oculto")){
+    caja.classList.remove("oculto");
+    $("#btn-corregir").textContent = "Confirmar: no entra al Excel";
+    $("#motivo").focus();
+    return;
+  }
+  guardarExpediente({observado:true});
 });
 
 $("#btn-abrir").addEventListener("click", () =>
@@ -614,7 +703,10 @@ async function dibujarHistorial(){
       <details class="mes"${i === 0 ? " open" : ""}>
         <summary>
           <span>${m.titulo}</span>
-          <span class="cuenta">${m.expedientes.length} expediente(s)</span>
+          <span class="cuenta">${m.expedientes.length} expediente(s)${
+            m.expedientes.filter(x => x.estado !== "ok").length
+              ? " · " + m.expedientes.filter(x => x.estado !== "ok").length + " pendiente(s)"
+              : ""}</span>
         </summary>
         ${m.expedientes.map(e => `
           <div class="exp">
@@ -624,6 +716,7 @@ async function dibujarHistorial(){
               <br><span class="num">${e.expediente}</span>
               — importado ${e.creado.slice(0,16).replace("T"," ")}
               ${e.editado ? " · corregido " + e.editado.slice(0,16) : ""}
+              ${e.estado !== "ok" ? `<br><span class="senal observado">pendiente de corrección</span> ${e.observacion}` : ""}
             </span>
             <button class="mini" data-abrir="${e.expediente}">Ver y corregir</button>
             <button class="mini riesgo" data-borrar="${e.expediente}">Quitar</button>
@@ -681,6 +774,9 @@ $("#btn-otro").addEventListener("click", () => {
   actual = null; input.value = "";
   mostrar(null);
   $("#estado").textContent = "";
+  $("#corregir").classList.add("oculto");
+  $("#motivo").value = "";
+  $("#btn-corregir").textContent = "Marcar para corregir";
   window.scrollTo({top:0, behavior:"smooth"});
 });
 </script>

@@ -213,7 +213,8 @@ class Handler(BaseHTTPRequestHandler):
         return {
             "columnas": [{"clave": k, "etiqueta": e} for k, e in COLUMNAS],
             "campos": {k: {"valor": exp.c(k).valor, "estado": exp.c(k).estado,
-                           "origen": exp.c(k).origen, "nota": exp.c(k).nota}
+                           "origen": exp.c(k).origen, "nota": exp.c(k).nota,
+                           "opciones": exp.c(k).opciones}
                        for k, _ in COLUMNAS},
             "documentos": [{"nombre": d.nombre, "tipo": d.tipo,
                             "paginas": d.paginas,
@@ -256,11 +257,22 @@ class Handler(BaseHTTPRequestHandler):
         if not expediente:
             return {"error": "El expediente no tiene número. No se puede guardar "
                              "sin identificador: faltaría la carátula del grupo."}
-        almacen.aprender_carrera(valores.get("instituto"), valores.get("materia"),
-                                 valores.get("carrera"))
-        almacen.guardar(expediente, valores, datos.get("archivos", []))
+        estado = "observado" if datos.get("observado") else "ok"
+        observacion = (datos.get("observacion") or "").strip()
+        if estado == "observado" and not observacion:
+            return {"error": "Escribí qué hay que corregir antes de marcarlo."}
+
+        # de un expediente observado no se aprende: sus datos están en duda
+        if estado == "ok":
+            almacen.aprender_carrera(valores.get("instituto"),
+                                     valores.get("materia"),
+                                     valores.get("carrera"))
+        almacen.guardar(expediente, valores, datos.get("archivos", []),
+                        estado, observacion)
         ruta = almacen.exportar_excel()
-        return {"ok": True, "ruta": str(ruta), "total": len(almacen.listar())}
+        return {"ok": True, "ruta": str(ruta), "estado": estado,
+                "total": len(almacen.listar(solo_ok=True)),
+                "observados": len(almacen.listar()) - len(almacen.listar(solo_ok=True))}
 
 
 class Servidor(ThreadingHTTPServer):

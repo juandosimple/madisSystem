@@ -79,7 +79,15 @@ Corregir un expediente NO cambia su mes: sigue archivado donde se cargó.
 - **Cada dato se coteja entre documentos.** No se lee una vez: se junta de todas
   las fuentes donde aparece y recién después se decide. El estado resultante es
   `verificado` (2+ fuentes coinciden), `una_fuente` (no se pudo contrastar) o
-  `discrepancia` (los documentos se contradicen: decide la persona).
+  `discrepancia`. **Ante una discrepancia la app no elige**: muestra los valores
+  en juego con quién dice cada uno y la persona marca cuál va al Excel, o
+  escribe otro.
+- **Marcar para corregir.** Si el problema es del documento y no de la lectura,
+  el expediente se anota como pendiente con el motivo y NO entra al Excel: no
+  debe seguir su curso hasta que alguien lo arregle. Queda a la vista en el
+  historial y en una hoja "Para corregir" del Excel, con qué hay que rectificar.
+  De un expediente pendiente tampoco se aprende la carrera: sus datos están en
+  duda.
   Sobre el expediente de ejemplo, 12 de 13 campos quedan verificados.
 - El único dato sin segunda fuente es la **fecha de cese**: existe solo en la
   sección 5 del formulario escaneado. Se informa como tal, no se disimula.

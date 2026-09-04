@@ -129,6 +129,20 @@ def _consolidar_nombre(fuentes):
     return (completo[1], VERIFICADO if len(compatibles) >= 2 else UNA_FUENTE, nota)
 
 
+def opciones_de(clave, fuentes):
+    """Los valores distintos en juego, con quien dice cada uno.
+
+    La persona tiene que poder elegir cual va al Excel: la app no debe decidir
+    por ella cuando dos documentos se contradicen.
+    """
+    fuentes = [(v, d) for v, d in fuentes if str(v).strip()]
+    grupos = {}
+    for valor, de_donde in fuentes:
+        grupos.setdefault(normalizar(clave, valor), []).append((valor, de_donde))
+    return [{"valor": g[0][0], "fuentes": [d for _, d in g]}
+            for _, g in sorted(grupos.items(), key=lambda kv: -len(kv[1]))]
+
+
 def consolidar(clave, fuentes):
     """fuentes: [(valor, de_donde)] -> (valor, estado, nota)"""
     fuentes = [(v, d) for v, d in fuentes if str(v).strip()]

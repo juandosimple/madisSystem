@@ -10,8 +10,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field, asdict
 
-from cotejo import (consolidar, VERIFICADO, UNA_FUENTE, DISCREPANCIA,
-                    REVISAR_LECTURA, n_fecha)
+from cotejo import (consolidar, opciones_de, VERIFICADO, UNA_FUENTE,
+                    DISCREPANCIA, REVISAR_LECTURA, n_fecha)
 from pathlib import Path
 
 import fitz  # pymupdf
@@ -30,6 +30,9 @@ class Campo:
     estado: str = NO_ENCONTRADO
     origen: str = ""   # que documento lo aporto
     nota: str = ""
+    # los valores en juego cuando las fuentes no coinciden, para que la persona
+    # elija en vez de que la app decida por mayoria
+    opciones: list = field(default_factory=list)
 
     def set(self, valor, estado=EXTRAIDO, origen="", nota=""):
         self.valor, self.estado, self.origen, self.nota = valor, estado, origen, nota
@@ -424,6 +427,8 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
         if clave == "expediente":
             valor = re.sub(r"-\s+-", "-", valor)   # el sector vacío queda como "- -"
         exp.c(clave).set(valor, estado, "", nota)
+        if estado in (DISCREPANCIA, REVISAR_LECTURA):
+            exp.c(clave).opciones = opciones_de(clave, aportes.get(clave, []))
 
     # el nombre se validó completo; apellido y nombre heredan esa confianza
     nom_val, nom_estado, nom_nota = consolidar("_nombre_completo",
@@ -441,6 +446,9 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
         if valor:
             exp.c(clave).set(valor, nom_estado, "",
                              "nombre completo " + nom_nota)
+            if nom_estado == DISCREPANCIA:
+                exp.c(clave).opciones = opciones_de(
+                    "_nombre_completo", aportes.get("_nombre_completo", []))
 
     # el DNI sale del CUIL cotejado
     cuil = exp.c("dni").valor
