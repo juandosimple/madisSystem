@@ -84,16 +84,25 @@
   #estado{font-size:13px;color:var(--suave)}
   .oculto{display:none}
 
-  /* ---------- aviso de versión nueva ---------- */
-  #novedad{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-           background:#eaf2ff;border:1px solid #b9cdf0;border-radius:10px;
-           padding:13px 17px;margin-bottom:18px}
-  #novedad .que{flex:1;min-width:220px;font-size:13.5px}
-  #novedad b{color:var(--acento)}
-  #novedad .notas{display:block;color:var(--suave);font-size:12.5px;margin-top:3px;
-                  white-space:pre-line}
+  /* ---------- ajustes ---------- */
+  .engranaje{position:relative;background:none;border:none;color:#fff;opacity:.85;
+             cursor:pointer;padding:4px 6px;font-size:17px;line-height:1}
+  .engranaje:hover{opacity:1}
+  .engranaje .punto{position:absolute;top:2px;right:2px;width:8px;height:8px;
+                    border-radius:50%;background:#ffcc4d;border:1.5px solid var(--acento)}
+  .fila{display:flex;align-items:flex-start;gap:14px;padding:15px 0;
+        border-bottom:1px solid #eef1f6}
+  .fila:last-child{border-bottom:none}
+  .fila .texto{flex:1;min-width:200px}
+  .fila .titulo{font-weight:600;font-size:13.5px;margin-bottom:3px}
+  .fila .detalle{font-size:12.5px;color:var(--suave);white-space:pre-line;
+                 word-break:break-word}
+  .fila .acciones2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .senal{font-size:11px;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .senal.bien{background:var(--ok-f);color:var(--ok)}
+  .senal.mal{background:var(--falta-f);color:var(--falta)}
+  .senal.nuevo{background:#fff3d6;color:#8a5a00}
   #av-estado{font-size:12.5px;color:var(--suave)}
-  .version{font-size:11.5px;opacity:.6;margin-left:12px}
 
   /* ---------- historial ---------- */
   .barra-sup{display:flex;justify-content:space-between;align-items:center;
@@ -161,22 +170,44 @@
       <h1>Expedientes GEDO → Excel</h1>
       <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
     </div>
-    <div>
+    <div style="display:flex;align-items:center;gap:16px">
       <button class="enlace" id="btn-historial">Ver historial</button>
-      <span class="version" id="version"></span>
+      <button class="engranaje" id="btn-ajustes" title="Ajustes">⚙<span
+              class="punto oculto" id="punto-nuevo"></span></button>
     </div>
   </div>
 </header>
 
 <main>
-  <section id="novedad" class="oculto">
-    <div class="que">
-      Hay una versión nueva: <b id="av-version"></b>
-      <span class="notas" id="av-notas"></span>
+  <section id="ajustes" class="panel oculto">
+    <h3>Ajustes</h3>
+
+    <div class="fila">
+      <div class="texto">
+        <div class="titulo">Versión <span id="aj-version">—</span></div>
+        <div class="detalle" id="aj-novedad">Comprobando si hay una versión nueva…</div>
+      </div>
+      <div class="acciones2" id="aj-acciones"></div>
     </div>
-    <button class="primario" id="btn-actualizar">Actualizar ahora</button>
-    <button class="secundario" id="btn-despues">Ahora no</button>
-    <span id="av-estado"></span>
+
+    <div class="fila">
+      <div class="texto">
+        <div class="titulo">Lectura de documentos escaneados</div>
+        <div class="detalle" id="aj-ocr">—</div>
+      </div>
+      <span class="senal" id="aj-ocr-senal"></span>
+    </div>
+
+    <div class="fila">
+      <div class="texto">
+        <div class="titulo">Dónde se guardan los datos</div>
+        <div class="detalle" id="aj-datos">—</div>
+      </div>
+      <div class="acciones2">
+        <button class="secundario mini" id="aj-abrir-carpeta">Abrir carpeta</button>
+        <button class="secundario mini" id="aj-abrir-excel">Abrir Excel</button>
+      </div>
+    </div>
   </section>
 
   <div id="zona">
@@ -332,7 +363,7 @@ function fijarPaso(texto, detalle){
 }
 
 function mostrar(cual){
-  ["cargando","caido","resultado","historial"].forEach(id =>
+  ["cargando","caido","resultado","historial","ajustes"].forEach(id =>
     $("#" + id).classList.toggle("oculto", id !== cual));
   if(cual) $("#" + cual).scrollIntoView({behavior:"smooth", block:"center"});
 }
@@ -431,33 +462,80 @@ $("#btn-guardar").addEventListener("click", async () => {
 $("#btn-abrir").addEventListener("click", () =>
   fetch("/abrir-excel", {method:"POST"}));
 
-/* ------------------------------------------------ actualización -------- */
-(async function comprobarVersion(){
+/* ------------------------------------------------ ajustes -------------- */
+let NOVEDAD = null;
+
+// La comprobación de versión corre sola al arrancar. Acá solo se consulta el
+// resultado, para poner el punto en el engranaje sin abrir nada.
+(async function vigilarVersion(){
   for(let intento = 0; intento < 20; intento++){
     let r;
     try{ r = await (await fetch("/actualizacion")).json(); }
     catch(e){ return; }
-    $("#version").textContent = "v" + r.version;
     if(r.buscada){
-      if(r.novedad) mostrarNovedad(r.novedad);
-      return;                       // ya se comprobó: no se insiste
+      NOVEDAD = r.novedad;
+      $("#punto-nuevo").classList.toggle("oculto", !NOVEDAD);
+      return;
     }
-    await new Promise(f => setTimeout(f, 1500));   // sigue buscando en el fondo
+    await new Promise(f => setTimeout(f, 1500));
   }
 })();
 
-function mostrarNovedad(n){
-  $("#av-version").textContent = n.version + " (tenés la " + n.actual + ")";
-  $("#av-notas").textContent = n.notas || "";
-  $("#novedad").classList.remove("oculto");
+$("#btn-ajustes").addEventListener("click", async () => {
+  if(!$("#ajustes").classList.contains("oculto")){ mostrar(null); return; }
+  await dibujarAjustes();
+});
+
+async function dibujarAjustes(){
+  let e;
+  try{ e = await (await fetch("/estado")).json(); }
+  catch(err){ mostrar("caido"); return; }
+
+  NOVEDAD = e.novedad;
+  $("#aj-version").textContent = e.version;
+  $("#punto-nuevo").classList.toggle("oculto", !NOVEDAD);
+
+  $("#aj-ocr").textContent = e.ocr.detalle;
+  const senal = $("#aj-ocr-senal");
+  senal.textContent = e.ocr.ok ? "funciona" : "no disponible";
+  senal.className = "senal " + (e.ocr.ok ? "bien" : "mal");
+
+  $("#aj-datos").textContent = e.datos +
+    `\n${e.expedientes} expediente(s) cargado(s). Las actualizaciones no tocan esta carpeta.`;
+
+  pintarActualizacion(e.buscada);
+  mostrar("ajustes");
 }
 
-$("#btn-despues").addEventListener("click", () =>
-  $("#novedad").classList.add("oculto"));
+function pintarActualizacion(buscada){
+  const texto = $("#aj-novedad"), acciones = $("#aj-acciones");
+  if(NOVEDAD){
+    texto.innerHTML = `<span class="senal nuevo">versión ${NOVEDAD.version} disponible</span>` +
+                      (NOVEDAD.notas ? "\n" + NOVEDAD.notas : "");
+    acciones.innerHTML = `<button class="primario" id="btn-actualizar">Actualizar ahora</button>
+                          <span id="av-estado"></span>`;
+    $("#btn-actualizar").addEventListener("click", actualizar);
+  } else {
+    texto.textContent = buscada ? "Estás usando la última versión."
+                                : "Comprobando si hay una versión nueva…";
+    acciones.innerHTML = `<button class="secundario mini" id="btn-buscar">Buscar ahora</button>
+                          <span id="av-estado"></span>`;
+    $("#btn-buscar").addEventListener("click", async () => {
+      $("#av-estado").textContent = "Buscando…";
+      try{
+        const r = await (await fetch("/buscar-actualizacion", {method:"POST"})).json();
+        NOVEDAD = r.novedad;
+        $("#punto-nuevo").classList.toggle("oculto", !NOVEDAD);
+        pintarActualizacion(true);
+        if(!NOVEDAD) $("#av-estado").textContent = "Sin novedades.";
+      }catch(e){ $("#av-estado").textContent = "No se pudo comprobar."; }
+    });
+  }
+}
 
-$("#btn-actualizar").addEventListener("click", async () => {
-  if(!confirm("Se va a descargar e instalar la versión nueva.\n\n" +
-              "La aplicación se va a cerrar sola durante la instalación. " +
+async function actualizar(){
+  if(!confirm("Se va a descargar la versión " + NOVEDAD.version + ".\n\n" +
+              "La aplicación se va a cerrar durante la instalación. " +
               "Los expedientes cargados y el Excel no se tocan.")) return;
   $("#btn-actualizar").disabled = true;
   $("#av-estado").textContent = "Descargando…";
@@ -481,7 +559,12 @@ $("#btn-actualizar").addEventListener("click", async () => {
     $("#av-estado").textContent = "";
     alert("No se pudo actualizar:\n\n" + e.message);
   }
-});
+}
+
+$("#aj-abrir-carpeta").addEventListener("click", () =>
+  fetch("/abrir-carpeta", {method:"POST"}).catch(() => {}));
+$("#aj-abrir-excel").addEventListener("click", () =>
+  fetch("/abrir-excel", {method:"POST"}).catch(() => {}));
 
 /* ------------------------------------------------ historial ------------ */
 $("#btn-historial").addEventListener("click", async () => {

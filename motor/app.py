@@ -102,6 +102,18 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/actualizacion":
             self._json({"version": VERSION, "buscada": NOVEDAD["buscada"],
                         "novedad": NOVEDAD["info"]})
+        elif self.path == "/estado":
+            import ocr
+            ocr_ok, ocr_detalle = ocr.diagnostico()
+            self._json({
+                "version": VERSION,
+                "ocr": {"ok": ocr_ok, "detalle": ocr_detalle},
+                "datos": str(almacen.BASE),
+                "excel": str(almacen.BASE / "expedientes.xlsx"),
+                "expedientes": len(almacen.listar()),
+                "buscada": NOVEDAD["buscada"],
+                "novedad": NOVEDAD["info"],
+            })
         elif self.path == "/latido":
             LATIDO["ultimo"] = time.time()
             LATIDO["hubo"] = True
@@ -145,6 +157,14 @@ class Handler(BaseHTTPRequestHandler):
                     almacen.exportar_excel()
                 self._json({"ok": bool(borrados),
                             "total": len(almacen.listar())})
+            elif self.path == "/abrir-carpeta":
+                abrir_archivo(almacen.BASE)
+                self._json({"ok": True, "ruta": str(almacen.BASE)})
+            elif self.path == "/buscar-actualizacion":
+                # comprobación a pedido, para no depender de la del arranque
+                NOVEDAD["info"] = actualizador.buscar()
+                NOVEDAD["buscada"] = True
+                self._json({"novedad": NOVEDAD["info"]})
             elif self.path == "/abrir-excel":
                 ruta = almacen.exportar_excel()
                 abrir_archivo(ruta)

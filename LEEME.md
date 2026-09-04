@@ -22,9 +22,12 @@ Flujo: soltás los PDFs de UN expediente → revisás la fila → "Extraer datos
 ## Actualización remota
 
 Al abrir, la app consulta el último release de GitHub en segundo plano. Si hay
-una versión más nueva muestra un aviso con un botón **Actualizar ahora**: nada
-se descarga ni se instala sin que la persona lo pida. Si no hay internet, no
-pasa nada y no molesta.
+una versión más nueva, aparece un punto amarillo sobre el engranaje; la
+actualización se hace desde **Ajustes**, con un botón. Nada se descarga ni se
+instala sin que la persona lo pida, y sin internet no pasa nada.
+
+En Ajustes también se ve la versión, si el OCR está funcionando y dónde se
+guardan los datos, con accesos para abrir esa carpeta y el Excel.
 
 Al aceptar, se baja el instalador, se comprueba **tamaño, sha256 y que sea
 realmente un ejecutable de Windows**, se lanza en modo silencioso y la app se
