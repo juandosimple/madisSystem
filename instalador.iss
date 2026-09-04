@@ -17,7 +17,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
-ArchitecturesInstallIn64BitMode=x64compatible
+; 'x64compatible' requiere Inno 6.3+; 'x64' funciona en toda la serie 6
+ArchitecturesInstallIn64BitMode=x64
 
 [Languages]
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"

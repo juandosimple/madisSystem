@@ -28,23 +28,46 @@ jobs:
       - name: Preparar Tesseract para empaquetar
         shell: pwsh
         run: |
-          $origen = "C:\Program Files\Tesseract-OCR"
+          $origen  = "C:\Program Files\Tesseract-OCR"
           $destino = "motor\tesseract"
-          New-Item -ItemType Directory -Force -Path "$destino\tessdata" | Out-Null
 
-          # el ejecutable y sus DLL
-          Copy-Item "$origen\*" -Destination $destino -Recurse -Force -Exclude "tessdata"
+          # robocopy en vez de Copy-Item: el -Exclude de PowerShell combinado
+          # con -Recurse no es confiable. Códigos 0-7 de robocopy son éxito.
+          robocopy $origen $destino /E /NFL /NDL /NJH /NJS | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "robocopy falló ($LASTEXITCODE)" }
+          $global:LASTEXITCODE = 0
 
-          # de los idiomas solo hacen falta estos: el pack completo pesa ~700 MB
-          foreach ($idioma in @("spa", "eng", "osd")) {
-            $archivo = "$origen\tessdata\$idioma.traineddata"
-            if (Test-Path $archivo) { Copy-Item $archivo "$destino\tessdata\" }
-          }
+          # El paquete de Chocolatey trae solo inglés. El español se baja
+          # explícitamente: si dependiéramos de que venga incluido, la app
+          # compilaría bien y el OCR fallaría recién en manos del usuario.
+          $spa = "$destino\tessdata\spa.traineddata"
+          Invoke-WebRequest -UseBasicParsing -OutFile $spa `
+            "https://github.com/tesseract-ocr/tessdata_fast/raw/main/spa.traineddata"
 
-          Write-Host "Contenido empaquetado:"
+          # se podan los demás idiomas, pero NO las subcarpetas configs/ y
+          # tessconfigs/, que Tesseract necesita para arrancar.
+          Get-ChildItem "$destino\tessdata" -Filter *.traineddata |
+            Where-Object { $_.BaseName -notin @("spa", "eng", "osd") } |
+            Remove-Item -Force
+
+          # comprobación real: que el binario corra y reconozca el español.
+          $env:TESSDATA_PREFIX = (Resolve-Path "$destino\tessdata").Path
+          $idiomas = & "$destino\tesseract.exe" --list-langs 2>&1
+          Write-Host "Idiomas disponibles: $($idiomas -join ', ')"
+          if ($idiomas -notcontains "spa") { throw "Falta el español en Tesseract" }
+
           Get-ChildItem $destino -Recurse -File |
             Measure-Object -Property Length -Sum |
-            ForEach-Object { "{0} archivos, {1:N1} MB" -f $_.Count, ($_.Sum/1MB) }
+            ForEach-Object { "Empaquetado: {0} archivos, {1:N1} MB" -f $_.Count, ($_.Sum/1MB) }
+
+      - name: Probar que el OCR funciona
+        shell: pwsh
+        run: |
+          # Fabrica un formulario escaneado de mentira y verifica que el motor
+          # lo lea. Sin esto sabríamos que el .exe arranca, pero no que sirve.
+          $env:PATH = "$PWD\motor\tesseract;$env:PATH"
+          $env:TESSDATA_PREFIX = "$PWD\motor\tesseract\tessdata"
+          python motor/prueba_humo.py
 
       - name: Compilar con PyInstaller
         run: pyinstaller motor/app.spec --noconfirm --distpath dist --workpath build
