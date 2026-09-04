@@ -37,7 +37,8 @@
   .doc:last-child{border-bottom:none}
   .doc .nom{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
   .etq{font-size:11px;padding:2px 8px;border-radius:20px;white-space:nowrap}
-  .etq.tipo{background:#eaf0fa;color:var(--acento)}
+  .etq.tipo{background:#eaf0fa;color:var(--acento);min-width:130px;text-align:center;
+            padding:4px 10px;font-size:12px;font-weight:600}
   .etq.ok{background:var(--ok-f);color:var(--ok)}
   .etq.mal{background:var(--falta-f);color:var(--falta)}
   .etq.scan{background:var(--aviso-f);color:var(--aviso)}
@@ -58,9 +59,12 @@
 
   /* la designación entra en una fila de campos cortos */
   .compacto{display:flex;gap:14px;flex-wrap:wrap}
-  .compacto .campo{flex:0 0 auto;min-width:96px}
-  .compacto .campo.crece{flex:1 1 130px}
-  .compacto input{width:100%}
+  .compacto .campo{flex:0 0 auto;min-width:0}
+  /* el campo mide lo que mide su etiqueta; el input se estira hasta ahí.
+     El ancho fijo solo cuenta cuando la etiqueta es más corta (Año, Comisión). */
+  .compacto input{width:64px;min-width:100%}
+  .compacto .campo.crece input{width:118px}
+  .compacto .estado{display:block;width:max-content;margin:4px 0 0}
 
   label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
   .estado{font-weight:400;font-size:11px;padding:2px 8px;border-radius:20px;
@@ -101,7 +105,11 @@
   #destino{border:1px solid #cfe6da;background:#f6fbf8;border-radius:10px;
            padding:14px 16px;margin-top:16px}
   #destino .titulo{font-size:11px;font-weight:700;letter-spacing:.7px;
-                   text-transform:uppercase;color:var(--ok);margin-bottom:10px}
+                   text-transform:uppercase;color:var(--ok);margin-bottom:10px;
+                   display:flex;align-items:center;gap:7px}
+  #destino .titulo .cuenta{text-transform:none;letter-spacing:0;color:var(--tinta);
+                           font-size:12px;font-weight:600}
+  #destino .titulo svg{width:14px;height:14px;flex:none}
   #destino table{width:100%;border-collapse:collapse;font-size:12px}
   #destino th{text-align:left;font-weight:600;color:var(--suave);font-size:10.5px;
               letter-spacing:.4px;text-transform:uppercase;padding:5px 8px;
@@ -126,8 +134,9 @@
   .primario:disabled{background:#aab6c8;cursor:not-allowed}
   .secundario{background:#fff;border-color:var(--linea);color:var(--tinta)}
   .secundario:hover{background:#f0f3f8}
-  /* "Abrir Excel" es una acción secundaria: se separa de las dos decisiones */
-  .acciones .aparte{margin-left:auto}
+  /* la acción principal ocupa el ancho sobrante; las otras dos van juntas */
+  .acciones .primario{flex:1 1 auto;padding:14px 20px}
+  .acciones .secundario{padding:14px 20px}
   .oculto{display:none}
 
   /* ---------- aviso pasajero ---------- */
@@ -357,7 +366,7 @@
       <div class="acciones">
         <button class="primario" id="btn-guardar">Extraer datos a Excel</button>
         <button class="secundario" id="btn-corregir">Marcar para corregir</button>
-        <button class="secundario aparte" id="btn-abrir">Abrir Excel</button>
+        <button class="secundario" id="btn-abrir">Abrir Excel</button>
       </div>
     </div>
   </section>
@@ -403,7 +412,7 @@ let actual = null, nombresArchivos = [];
 const ETIQUETA_TIPO = {
   caratula:"Carátula", declaracion:"Declaración jurada",
   formulario_t:"Formulario T", dictamen:"Dictamen / Informe",
-  desconocido:"No identificado"
+  desconocido:"No identificado", guardado:"Guardado"
 };
 // se fijan al primer análisis y sirven para redibujar un expediente guardado
 let COLUMNAS_GUARDADAS = [];
@@ -526,7 +535,8 @@ function dibujar(d){
       <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
       <span class="nom">${doc.nombre}</span>
       ${doc.escaneadas ? `<span class="etq scan">${doc.escaneadas} pág. escaneada(s)</span>` : ""}
-      <span class="etq ${doc.firmas >= 2 ? "ok" : "mal"}">${doc.firmas} firma(s)</span>
+      ${doc.firmas == null ? "" :
+        `<span class="etq ${doc.firmas >= 2 ? "ok" : "mal"}">${doc.firmas} firma(s)</span>`}
     </div>`).join("");
 
   // Los campos van agrupados por lo que significan. Sin grupos (por ejemplo al
@@ -596,8 +606,8 @@ function campoHTML(clave, etiqueta, c, d, compacto){
   const marca = (c.estado === "discrepancia" || c.estado === "no_encontrado") ? " conflicto"
               : c.estado === "revisar_lectura" ? " lectura"
               : c.estado === "una_fuente" ? " pendiente" : "";
-  const ancho = !compacto && ["expediente","descripcion","materia","carrera"].includes(clave);
-  const crece = compacto && ["fecha_alta","fecha_cese"].includes(clave);
+  const ancho = !compacto && ["descripcion","dni","materia","carrera"].includes(clave);
+  const crece = compacto && ["firmas","fecha_alta","fecha_cese"].includes(clave);
 
   let control;
   if(clave === "carrera" && d.carreras_sugeridas.length > 1){
@@ -635,7 +645,18 @@ function dibujarResumen(d, etiquetaDe){
   const decidir = d.columnas.filter(c =>
       ["discrepancia","revisar_lectura"].includes(d.campos[c.clave].estado));
 
-  let html = `<div class="resumen ${ver === total ? "bien" : "bien"}">
+  if(d.guardado_el){
+    $("#resumen").innerHTML = `<div class="resumen bien">
+        <span class="ico">✓</span>
+        <span><b>Guardado el ${d.guardado_el}.</b> Los valores son los que se
+          confirmaron entonces; no se releyeron los PDFs.</span></div>
+      <div class="resumen ojo"><span class="ico">•</span>
+        <span>Este expediente <b>ya está cargado</b>. Si lo guardás, se actualiza
+        la fila existente (no se duplica).</span></div>`;
+    return;
+  }
+
+  let html = `<div class="resumen bien">
       <span class="ico">✓</span>
       <span><b>${ver} de ${total} datos verificados</b> en dos o más documentos.` +
       (ver < total ? ` Los ${total - ver} restantes aparecen en un solo lugar y
@@ -673,7 +694,7 @@ function dibujarDestino(d){
                             carrera: d.campos.carrera.valor,
                             fecha_alta: d.campos.fecha_alta.valor}];
   $("#destino").innerHTML = `
-    <div class="titulo">Guardado en Excel · ${x.total} expediente(s) cargado(s)</div>
+    <div class="titulo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 6.5h13M1.5 10h13M6 2.5v11M10.5 2.5v11"/></svg><span>Guardado en Excel</span><span class="cuenta">· ${x.total} expediente${x.total === 1 ? "" : "s"} cargado${x.total === 1 ? "" : "s"}</span></div>
     <table>
       <tr><th></th><th>Expediente</th><th>Apellido</th><th>Nombre</th>
           <th>DNI</th><th>Carrera</th><th>F. alta</th></tr>
@@ -924,19 +945,22 @@ $("#meses").addEventListener("click", async e => {
    reprocesan los PDFs: se muestran los valores tal como quedaron guardados. */
 function abrirGuardado(g){
   nombresArchivos = g.archivos || [];
+  const columnas = g.columnas?.length ? g.columnas : COLUMNAS_GUARDADAS;
   const campos = {};
   actual = {
-    columnas: COLUMNAS_GUARDADAS,
+    columnas,
+    grupos: g.grupos || [],
+    excel: g.excel || null,
     campos,
+    // de los PDFs solo queda el nombre: no se sabe cuántas firmas tenían
     documentos: (g.archivos || []).map(n => ({nombre:n, tipo:"guardado",
-                                              paginas:0, escaneadas:0, firmas:2})),
-    avisos: [`Expediente guardado el ${g.creado.slice(0,16)}. ` +
-             `Los valores son los que se confirmaron entonces, no se releyeron ` +
-             `los PDFs. Si lo guardás de nuevo, se actualiza la fila.`],
+                                              paginas:0, escaneadas:0, firmas:null})),
+    avisos: [],
     carreras_sugeridas: [],
     duplicado: true,
+    guardado_el: (g.creado || "").slice(0,16).replace("T"," "),
   };
-  COLUMNAS_GUARDADAS.forEach(c => {
+  columnas.forEach(c => {
     campos[c.clave] = {valor: g.valores[c.clave] || "", estado: "guardado",
                        origen: "", nota: ""};
   });

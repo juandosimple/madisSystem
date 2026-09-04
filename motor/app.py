@@ -149,7 +149,17 @@ class Handler(BaseHTTPRequestHandler):
             consulta = urllib.parse.urlparse(self.path).query
             ident = urllib.parse.parse_qs(consulta).get("id", [""])[0]
             guardado = almacen.obtener(ident)
-            self._json(guardado or {"error": "No se encontró ese expediente."})
+            if not guardado:
+                self._json({"error": "No se encontró ese expediente."})
+                return
+            # Un expediente reabierto se dibuja con la misma pantalla que uno
+            # recién analizado: los mismos grupos y el mismo bloque de Excel.
+            self._json({
+                **guardado,
+                "columnas": [{"clave": k, "etiqueta": e} for k, e in COLUMNAS],
+                "grupos": [{"titulo": t, "claves": c} for t, c in GRUPOS],
+                "excel": almacen.contexto_excel(ident),
+            })
         else:
             self.send_error(404)
 
