@@ -48,6 +48,14 @@
                   gap:12px;margin-bottom:14px}
   .cabecera-panel h3{margin:0}
   .cabecera-panel .pista{font-size:12.5px;color:var(--suave)}
+  /* el panel de documentos se puede plegar: una vez visto, distrae */
+  .cabecera-panel.plegable{margin-bottom:0;cursor:pointer;align-items:center}
+  .cabecera-panel.plegable h3{margin:0}
+  .cabecera-panel.plegable + #docs{margin-top:10px}
+  .panel.plegado .cabecera-panel.plegable + #docs{display:none}
+  .cuenta-docs{display:none;font-weight:400;text-transform:none;letter-spacing:0;
+               margin-left:6px}
+  .panel.plegado .cuenta-docs{display:inline}
 
   /* cada grupo de campos es una tarjeta con su título */
   .grupo{border:1px solid var(--linea);border-radius:10px;padding:16px 18px 18px;
@@ -344,7 +352,10 @@
 
   <section id="resultado" class="oculto">
     <div class="panel">
-      <h3>Documentos detectados</h3>
+      <div class="cabecera-panel plegable" id="docs-cabecera">
+        <h3>Documentos detectados <span class="cuenta-docs" id="docs-cuenta"></span></h3>
+        <button class="mini" id="btn-docs" type="button">Ocultar</button>
+      </div>
       <div id="docs"></div>
     </div>
 
@@ -501,12 +512,13 @@ function fijarPaso(texto, detalle){
 // espera. El botón correspondiente queda marcado para saber dónde se está.
 const PANTALLAS_APARTE = {historial: "#btn-historial", ajustes: "#btn-ajustes"};
 
-function mostrar(cual){
+function mostrar(cual, {sinZona = false} = {}){
   ["cargando","caido","resultado","historial","ajustes"].forEach(id =>
     $("#" + id).classList.toggle("oculto", id !== cual));
 
+  // Un expediente reabierto no espera archivos: la zona de carga sobra.
   const aparte = cual in PANTALLAS_APARTE;
-  $("#zona").classList.toggle("oculto", aparte);
+  $("#zona").classList.toggle("oculto", aparte || sinZona);
   for(const [pantalla, boton] of Object.entries(PANTALLAS_APARTE)){
     $(boton).classList.toggle("activo", cual === pantalla);
   }
@@ -530,6 +542,8 @@ function dibujar(d){
   $("#corregir").classList.add("oculto");
   $("#btn-corregir").textContent = "Marcar para corregir";
 
+  $("#docs-cuenta").textContent = `· ${d.documentos.length} archivo${
+      d.documentos.length === 1 ? "" : "s"}`;
   $("#docs").innerHTML = d.documentos.map(doc => `
     <div class="doc">
       <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
@@ -964,11 +978,23 @@ function abrirGuardado(g){
     campos[c.clave] = {valor: g.valores[c.clave] || "", estado: "guardado",
                        origen: "", nota: ""};
   });
-  mostrar("resultado");
   dibujar(actual);
+  mostrar("resultado", {sinZona:true});
+  window.scrollTo({top:0, behavior:"smooth"});
 }
 
 $("#btn-nuevo").addEventListener("click", nuevoExpediente);
+
+/* Plegar los documentos: se recuerda la preferencia entre expedientes. */
+const PLEGADO = "docs-plegados";
+function plegarDocs(plegado){
+  $("#docs-cabecera").closest(".panel").classList.toggle("plegado", plegado);
+  $("#btn-docs").textContent = plegado ? "Mostrar" : "Ocultar";
+  try{ localStorage.setItem(PLEGADO, plegado ? "1" : "0"); }catch(e){}
+}
+$("#docs-cabecera").addEventListener("click", () =>
+  plegarDocs(!$("#docs-cabecera").closest(".panel").classList.contains("plegado")));
+try{ plegarDocs(localStorage.getItem(PLEGADO) === "1"); }catch(e){}
 
 function nuevoExpediente(){
   actual = null; input.value = "";
