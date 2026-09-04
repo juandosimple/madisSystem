@@ -218,7 +218,10 @@ class Handler(BaseHTTPRequestHandler):
                     info, lambda m: TRABAJOS[ident].update(paso=m))
                 TRABAJOS[ident]["paso"] = "Iniciando el instalador…"
                 actualizador.aplicar(archivo)
-                TRABAJOS[ident].update(estado="listo", resultado={"ok": True})
+                TRABAJOS[ident].update(
+                    estado="listo",
+                    resultado={"ok": True,
+                               "mensaje": actualizador.instruccion_final()})
                 # el instalador necesita que la app suelte sus archivos
                 threading.Timer(2.0, APAGAR.set).start()
             except Exception as e:

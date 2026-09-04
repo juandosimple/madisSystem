@@ -10,12 +10,15 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 from rutas import SIN_CONSOLA, WINDOWS, carpeta_datos
+
+MAC = sys.platform == "darwin"
 from version import VERSION
 
 REPO = "juandosimple/madisSystem"
@@ -54,10 +57,18 @@ def buscar():
     if not hay_novedad(etiqueta):
         return None
 
-    instalador = next(
-        (a for a in datos.get("assets", [])
-         if a.get("name", "").lower().endswith(".exe")
-         and "instalador" in a.get("name", "").lower()), None)
+    # El archivo tiene que ser el de ESTE sistema. Sin este filtro, una Mac
+    # descargaría el instalador de Windows y lo intentaría ejecutar.
+    def es_mio(nombre):
+        nombre = nombre.lower()
+        if WINDOWS:
+            return nombre.endswith(".exe") and "instalador" in nombre
+        if MAC:
+            return nombre.endswith(".dmg")
+        return False
+
+    instalador = next((a for a in datos.get("assets", [])
+                       if es_mio(a.get("name", ""))), None)
     if not instalador:
         return None
 
@@ -101,14 +112,36 @@ def descargar(info, progreso=None):
                          f"{info['tamano']} bytes).")
     if info.get("sha256") and resumen.hexdigest() != info["sha256"]:
         raise ValueError("El archivo descargado no coincide con el publicado.")
-    if destino.read_bytes()[:2] != b"MZ":     # cabecera de ejecutable Windows
+    cabecera = destino.read_bytes()[:8]
+    if WINDOWS and cabecera[:2] != b"MZ":     # ejecutable de Windows
         raise ValueError("Lo descargado no es un instalador de Windows.")
+    if MAC and not (cabecera[:4] in (b"koly", b"\x78\x01\x73\x0d")
+                    or b"\x00" in cabecera):
+        raise ValueError("Lo descargado no parece una imagen de disco de macOS.")
     return destino
 
 
 def aplicar(instalador):
-    """Lanza el instalador. La app debe cerrarse enseguida para liberar sus
-    archivos; de eso se encarga quien llama."""
-    if not WINDOWS:
-        raise RuntimeError("La actualización automática es solo para Windows.")
-    subprocess.Popen([str(instalador), "/SILENT", "/NORESTART"], **SIN_CONSOLA)
+    """Pone en marcha la actualizacion. La app debe cerrarse enseguida para
+    liberar sus archivos; de eso se encarga quien llama.
+
+    En Windows el instalador hace todo solo. En macOS no: reemplazar un .app en
+    ejecucion desde el propio .app es fragil, asi que se abre la imagen de
+    disco y la persona arrastra la version nueva, que es el gesto habitual del
+    sistema.
+    """
+    if WINDOWS:
+        subprocess.Popen([str(instalador), "/SILENT", "/NORESTART"], **SIN_CONSOLA)
+    elif MAC:
+        subprocess.Popen(["open", str(instalador)])
+    else:
+        raise RuntimeError("La actualización automática no está disponible en "
+                           "este sistema.")
+
+
+def instruccion_final():
+    """Que decirle a la persona despues de lanzar la actualizacion."""
+    if MAC:
+        return ("Se abrió la imagen de disco: arrastrá la aplicación nueva a "
+                "Aplicaciones, reemplazando la anterior. Esta ventana se cierra.")
+    return "Instalando: la aplicación se va a cerrar."

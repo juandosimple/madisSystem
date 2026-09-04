@@ -468,7 +468,9 @@ $("#btn-actualizar").addEventListener("click", async () => {
       const e = await (await fetch("/progreso?id=" + id)).json();
       if(e.paso) $("#av-estado").textContent = e.paso;
       if(e.estado === "listo"){
-        $("#av-estado").textContent = "Instalando: la aplicación se va a cerrar.";
+        // el mensaje lo decide el backend: en Windows instala solo, en macOS
+        // hay que arrastrar la app nueva
+        $("#av-estado").textContent = e.resultado?.mensaje || "Listo.";
         return;
       }
       if(e.estado === "error") throw new Error(e.error);

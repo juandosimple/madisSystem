@@ -128,11 +128,11 @@ Medido sobre un expediente completo de 4 PDFs con 6 páginas escaneadas:
   Sin Tesseract el sistema igual funciona, pero deja la fecha de cese y la
   carrera sin completar, y lo avisa.
 
-## Compilar el instalador de Windows
+## Compilar (Windows y macOS)
 
-No se puede compilar desde macOS: PyInstaller no cross-compila (empaqueta el
-intérprete y las librerías nativas del sistema donde corre). Hay que hacerlo en
-Windows, y la forma más simple es que lo haga GitHub gratis:
+PyInstaller no cross-compila: empaqueta el intérprete y las librerías nativas
+del sistema donde corre, así que cada plataforma se compila en la suya. GitHub
+lo hace gratis en paralelo:
 
     git init
     git add -A
@@ -160,10 +160,21 @@ También se dispara empujando una etiqueta:
 
     git tag v1.0.0 && git push --tags
 
-El workflow instala Tesseract, lo empaqueta junto con la app (solo los idiomas
-español, inglés y OSD: el pack completo son ~700 MB), compila, **arranca el
-ejecutable y verifica que responda** antes de publicar nada, y arma el
-instalador con Inno Setup.
+Son tres trabajos: uno compila en Windows, otro en macOS y el tercero publica
+el release con los dos resultados. Cada uno empaqueta Tesseract dentro de la
+app (solo español, inglés y OSD), corre la prueba de OCR **contra el Tesseract
+empaquetado**, arranca el ejecutable y verifica que responda antes de publicar.
+
+En macOS hay un paso extra: el binario de Homebrew apunta a sus bibliotecas por
+ruta absoluta, que en otra máquina no existen. `motor/empaquetar_tesseract.py`
+copia el árbol de dependencias y reescribe cada referencia a `@loader_path`,
+dejándolo autocontenido. Verificado corriendo con un entorno vacío, sin
+Homebrew en el camino.
+
+**Ninguno de los dos está firmado.** En Windows aparece la advertencia de
+SmartScreen; en macOS, Gatekeeper exige abrirla la primera vez con clic derecho
+→ *Abrir*. Firmar requiere un certificado de código en Windows y una cuenta de
+desarrollador de Apple (paga) en macOS.
 
 Archivos involucrados:
 
