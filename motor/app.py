@@ -37,6 +37,20 @@ PUERTO = 8765
 TRABAJOS = {}
 
 
+def _detalle_error(e):
+    """Mensaje con archivo y línea.
+
+    Sin esto un fallo llega como "NoneType no tiene splitlines" y no hay forma
+    de saber de dónde salió: el traceback completo queda en el registro, pero
+    el usuario solo ve el mensaje y es lo único que puede reenviar.
+    """
+    import traceback
+    traceback.print_exc()
+    marco = traceback.extract_tb(e.__traceback__)[-1] if e.__traceback__ else None
+    donde = f" [{Path(marco.filename).name}:{marco.lineno}]" if marco else ""
+    return f"{type(e).__name__}: {e}{donde}"
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass  # silenciar el log de acceso
@@ -102,8 +116,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404)
         except Exception as e:  # que un PDF roto no tumbe el servidor
-            import traceback; traceback.print_exc()
-            self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+            self._json({"error": _detalle_error(e)}, 500)
 
     # ------------------------------------------------------------ acciones --
     def arrancar(self, datos):
@@ -122,9 +135,7 @@ class Handler(BaseHTTPRequestHandler):
                     datos, lambda m: TRABAJOS[ident].update(paso=m))
                 TRABAJOS[ident]["estado"] = "listo"
             except Exception as e:
-                import traceback; traceback.print_exc()
-                TRABAJOS[ident].update(estado="error",
-                                       error=f"{type(e).__name__}: {e}")
+                TRABAJOS[ident].update(estado="error", error=_detalle_error(e))
 
         threading.Thread(target=tarea, daemon=True).start()
         return {"id": ident}

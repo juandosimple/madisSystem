@@ -59,11 +59,15 @@ def ocr_pagina(ruta_pdf, pagina, idioma="spa", dpi=DPI):
         pix.save(png)
         del pix
         doc.close()
-        r = subprocess.run(
-            [ruta_tesseract(), str(png), "-", "-l", idioma, "--psm", "6"],
-            capture_output=True, text=True, env=entorno_tesseract(),
-            **SIN_CONSOLA)
-    texto = r.stdout or ""
+        try:
+            r = subprocess.run(
+                [ruta_tesseract(), str(png), "-", "-l", idioma, "--psm", "6"],
+                capture_output=True, text=True, errors="replace",
+                env=entorno_tesseract(), **SIN_CONSOLA)
+            salida = r.stdout
+        except OSError:
+            salida = ""
+    texto = salida or ""
     cache.write_text(texto, encoding="utf-8")
     return texto
 
@@ -165,10 +169,16 @@ def _tsv(png, psm="6", extra=None):
     """Palabras con su posicion, para poder ubicar un rotulo en la hoja."""
     cmd = ([ruta_tesseract(), str(png), "-", "-l", "spa", "--psm", psm]
            + (extra or []) + ["tsv"])
-    r = subprocess.run(cmd, capture_output=True, text=True,
-                       env=entorno_tesseract(), **SIN_CONSOLA)
+    if not ruta_tesseract():
+        return []
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           errors="replace", env=entorno_tesseract(), **SIN_CONSOLA)
+    except OSError:                       # tesseract ausente o sin permisos
+        return []
     palabras = []
-    for linea in r.stdout.splitlines()[1:]:
+    # stdout puede venir vacío o nulo si tesseract falló: no se asume nada
+    for linea in (r.stdout or "").splitlines()[1:]:
         p = linea.split("\t")
         if len(p) >= 12 and p[11].strip():
             palabras.append({"t": p[11].strip(), "x": int(p[6]), "y": int(p[7]),
@@ -214,10 +224,15 @@ def leer_cese(ruta_pdf):
     resoluciones distintas dicen lo mismo, el dato es confiable; si todas
     difieren, se avisa en vez de elegir una al azar.
     """
+    if not disponible():
+        return "", {}, False
     cache = _huella(ruta_pdf, "cese", "multi")
     if cache.exists():
-        guardado = json.loads(cache.read_text(encoding="utf-8"))
-        return guardado["fecha"], guardado["lecturas"], guardado["coinciden"]
+        try:
+            guardado = json.loads(cache.read_text(encoding="utf-8"))
+            return guardado["fecha"], guardado["lecturas"], guardado["coinciden"]
+        except (ValueError, KeyError, OSError):
+            cache.unlink(missing_ok=True)     # cache viejo o roto: se rehace
 
     doc = fitz.open(ruta_pdf)
     escaneadas = [i for i, p in enumerate(doc)
