@@ -19,6 +19,26 @@ Flujo: soltás los PDFs de UN expediente → revisás la fila → "Extraer datos
     datos/               la base y el Excel generado
     ejemplos/            PDFs de prueba
 
+## Actualización remota
+
+Al abrir, la app consulta el último release de GitHub en segundo plano. Si hay
+una versión más nueva muestra un aviso con un botón **Actualizar ahora**: nada
+se descarga ni se instala sin que la persona lo pida. Si no hay internet, no
+pasa nada y no molesta.
+
+Al aceptar, se baja el instalador, se comprueba **tamaño, sha256 y que sea
+realmente un ejecutable de Windows**, se lanza en modo silencioso y la app se
+cierra sola para liberar sus archivos. Los expedientes cargados y el Excel
+viven en otra carpeta y no se tocan.
+
+Requiere que **el repositorio sea público**: los releases de un repositorio
+privado no se pueden descargar sin credenciales, y meter un token dentro de la
+app lo dejaría al alcance de cualquiera que la tenga.
+
+La versión no se escribe a mano: el workflow la sella en `motor/version.py` al
+compilar, con el mismo número del release. Así lo que muestra la app y lo que
+se publicó no pueden separarse.
+
 ## Historial y archivo por mes
 
 Cada expediente guardado queda en el historial, agrupado por **mes de

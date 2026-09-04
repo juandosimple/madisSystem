@@ -24,7 +24,7 @@ a = Analysis(
     pathex=[str(RAIZ)],
     datas=datos,
     hiddenimports=["extractor", "almacen", "ocr", "cotejo", "rutas",
-                   "ventana"],
+                   "ventana", "actualizador", "version"],
     # PyMuPDF y openpyxl arrastran extras que no usamos y pesan
     excludes=["tkinter", "matplotlib", "numpy", "PIL", "pytest", "IPython"],
     noarchive=False,

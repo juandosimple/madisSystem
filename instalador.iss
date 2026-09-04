@@ -20,6 +20,9 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
+; al actualizar, la app puede seguir abierta: se cierra sola
+CloseApplications=yes
+RestartApplications=no
 ; 'x64compatible' requiere Inno 6.3+; 'x64' funciona en toda la serie 6
 ArchitecturesInstallIn64BitMode=x64
 

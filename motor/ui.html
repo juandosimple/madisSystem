@@ -84,6 +84,17 @@
   #estado{font-size:13px;color:var(--suave)}
   .oculto{display:none}
 
+  /* ---------- aviso de versión nueva ---------- */
+  #novedad{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+           background:#eaf2ff;border:1px solid #b9cdf0;border-radius:10px;
+           padding:13px 17px;margin-bottom:18px}
+  #novedad .que{flex:1;min-width:220px;font-size:13.5px}
+  #novedad b{color:var(--acento)}
+  #novedad .notas{display:block;color:var(--suave);font-size:12.5px;margin-top:3px;
+                  white-space:pre-line}
+  #av-estado{font-size:12.5px;color:var(--suave)}
+  .version{font-size:11.5px;opacity:.6;margin-left:12px}
+
   /* ---------- historial ---------- */
   .barra-sup{display:flex;justify-content:space-between;align-items:center;
              max-width:1040px;margin:0 auto;padding:0 28px}
@@ -150,11 +161,24 @@
       <h1>Expedientes GEDO → Excel</h1>
       <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
     </div>
-    <button class="enlace" id="btn-historial">Ver historial</button>
+    <div>
+      <button class="enlace" id="btn-historial">Ver historial</button>
+      <span class="version" id="version"></span>
+    </div>
   </div>
 </header>
 
 <main>
+  <section id="novedad" class="oculto">
+    <div class="que">
+      Hay una versión nueva: <b id="av-version"></b>
+      <span class="notas" id="av-notas"></span>
+    </div>
+    <button class="primario" id="btn-actualizar">Actualizar ahora</button>
+    <button class="secundario" id="btn-despues">Ahora no</button>
+    <span id="av-estado"></span>
+  </section>
+
   <div id="zona">
     <h2>Soltá acá los PDFs del expediente</h2>
     <p>Carátula, declaración jurada, formulario T y dictamen — de a un expediente por vez</p>
@@ -406,6 +430,56 @@ $("#btn-guardar").addEventListener("click", async () => {
 
 $("#btn-abrir").addEventListener("click", () =>
   fetch("/abrir-excel", {method:"POST"}));
+
+/* ------------------------------------------------ actualización -------- */
+(async function comprobarVersion(){
+  for(let intento = 0; intento < 20; intento++){
+    let r;
+    try{ r = await (await fetch("/actualizacion")).json(); }
+    catch(e){ return; }
+    $("#version").textContent = "v" + r.version;
+    if(r.buscada){
+      if(r.novedad) mostrarNovedad(r.novedad);
+      return;                       // ya se comprobó: no se insiste
+    }
+    await new Promise(f => setTimeout(f, 1500));   // sigue buscando en el fondo
+  }
+})();
+
+function mostrarNovedad(n){
+  $("#av-version").textContent = n.version + " (tenés la " + n.actual + ")";
+  $("#av-notas").textContent = n.notas || "";
+  $("#novedad").classList.remove("oculto");
+}
+
+$("#btn-despues").addEventListener("click", () =>
+  $("#novedad").classList.add("oculto"));
+
+$("#btn-actualizar").addEventListener("click", async () => {
+  if(!confirm("Se va a descargar e instalar la versión nueva.\n\n" +
+              "La aplicación se va a cerrar sola durante la instalación. " +
+              "Los expedientes cargados y el Excel no se tocan.")) return;
+  $("#btn-actualizar").disabled = true;
+  $("#av-estado").textContent = "Descargando…";
+  try{
+    const {id, error} = await (await fetch("/actualizar", {method:"POST"})).json();
+    if(error) throw new Error(error);
+    while(true){
+      const e = await (await fetch("/progreso?id=" + id)).json();
+      if(e.paso) $("#av-estado").textContent = e.paso;
+      if(e.estado === "listo"){
+        $("#av-estado").textContent = "Instalando: la aplicación se va a cerrar.";
+        return;
+      }
+      if(e.estado === "error") throw new Error(e.error);
+      await new Promise(f => setTimeout(f, 400));
+    }
+  }catch(e){
+    $("#btn-actualizar").disabled = false;
+    $("#av-estado").textContent = "";
+    alert("No se pudo actualizar:\n\n" + e.message);
+  }
+});
 
 /* ------------------------------------------------ historial ------------ */
 $("#btn-historial").addEventListener("click", async () => {

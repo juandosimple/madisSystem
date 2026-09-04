@@ -77,6 +77,25 @@ jobs:
           $env:TESSDATA_PREFIX = "$PWD\motor\tesseract\tessdata"
           python motor/prueba_humo.py
 
+      - name: Sellar la versión en la app
+        shell: pwsh
+        run: |
+          # La app tiene que saber su propia versión para poder compararla con
+          # la del último release. Se sella acá y no a mano, para que el número
+          # que muestra y el del release publicado no puedan separarse.
+          $version = "${{ inputs.version }}"
+          if (-not $version) { $version = "${{ github.ref_name }}" -replace '^v', '' }
+          if (-not $version) { $version = "0.0.0-prueba" }
+          # se arma como lista de líneas: un here-string acá chocaría con la
+          # indentación del bloque YAML
+          $lineas = @(
+            '# -*- coding: utf-8 -*-',
+            '"""Version de la aplicacion. La escribe el workflow al compilar."""',
+            ('VERSION = "' + $version + '"')
+          )
+          Set-Content -Path motor/version.py -Encoding utf8 -Value $lineas
+          Get-Content motor/version.py
+
       - name: Compilar con PyInstaller
         run: pyinstaller motor/app.spec --noconfirm --distpath dist --workpath build
 

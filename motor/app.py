@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from extractor import COLUMNAS, armar_expediente, _norm
 from rutas import EMPAQUETADA, abrir_archivo, carpeta_datos, recurso
+from version import VERSION
+import actualizador
 import almacen
 import ventana
 
@@ -46,6 +48,10 @@ LATIDO = {"ultimo": 0.0, "hubo": False}
 SILENCIO_MAXIMO = 20      # segundos sin latido -> se considera cerrada
 ESPERA_INICIAL = 90       # margen para que la ventana abra la primera vez
 APAGAR = threading.Event()
+
+# La comprobación de versión corre una vez al arrancar, en segundo plano: si no
+# hay internet no debe demorar ni molestar.
+NOVEDAD = {"buscada": False, "info": None}
 
 
 def _detalle_error(e):
@@ -92,7 +98,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(cuerpo)
         elif self.path == "/vivo":
-            self._json({"app": "expedientes-gedo"})
+            self._json({"app": "expedientes-gedo", "version": VERSION})
+        elif self.path == "/actualizacion":
+            self._json({"version": VERSION, "buscada": NOVEDAD["buscada"],
+                        "novedad": NOVEDAD["info"]})
         elif self.path == "/latido":
             LATIDO["ultimo"] = time.time()
             LATIDO["hubo"] = True
@@ -123,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
                 LATIDO["ultimo"] = time.time()
                 LATIDO["hubo"] = True
                 self._json({"ok": True})
+            elif self.path == "/actualizar":
+                self._json(self.actualizar())
             elif self.path == "/cerrar":
                 # la ventana avisa que se está cerrando
                 APAGAR.set()
@@ -193,6 +204,29 @@ class Handler(BaseHTTPRequestHandler):
             "duplicado": almacen.existe(exp.c("expediente").valor),
         }
 
+    def actualizar(self):
+        """Baja el instalador, lo verifica, lo lanza y cierra la app."""
+        info = NOVEDAD["info"]
+        if not info:
+            return {"error": "No hay ninguna actualización disponible."}
+        ident = uuid.uuid4().hex[:12]
+        TRABAJOS[ident] = {"estado": "trabajando", "paso": "Preparando la descarga…"}
+
+        def tarea():
+            try:
+                archivo = actualizador.descargar(
+                    info, lambda m: TRABAJOS[ident].update(paso=m))
+                TRABAJOS[ident]["paso"] = "Iniciando el instalador…"
+                actualizador.aplicar(archivo)
+                TRABAJOS[ident].update(estado="listo", resultado={"ok": True})
+                # el instalador necesita que la app suelte sus archivos
+                threading.Timer(2.0, APAGAR.set).start()
+            except Exception as e:
+                TRABAJOS[ident].update(estado="error", error=_detalle_error(e))
+
+        threading.Thread(target=tarea, daemon=True).start()
+        return {"id": ident}
+
     def guardar(self, datos):
         valores = datos["valores"]
         expediente = (valores.get("expediente") or "").strip()
@@ -262,7 +296,15 @@ def main():
     import ocr
     ok, detalle = ocr.diagnostico()
     print(("OCR: " if ok else "OCR NO DISPONIBLE: ") + detalle, flush=True)
+    print(f"Versión {VERSION}", flush=True)
 
+    def _buscar_novedad():
+        NOVEDAD["info"] = actualizador.buscar()
+        NOVEDAD["buscada"] = True
+        if NOVEDAD["info"]:
+            print(f"Hay una versión nueva: {NOVEDAD['info']['version']}", flush=True)
+
+    threading.Thread(target=_buscar_novedad, daemon=True).start()
     threading.Thread(target=_vigilar, daemon=True).start()
     try:
         ventana.abrir(url)          # ya no bloquea: la vida la marca el latido
