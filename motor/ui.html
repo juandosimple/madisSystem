@@ -203,6 +203,17 @@
 <script>
 const $ = s => document.querySelector(s);
 
+/* La app se apaga sola cuando esta página deja de dar señales de vida. Es lo
+   único confiable: en Windows el navegador delega la ventana en otro proceso,
+   así que vigilar el proceso que lanzamos no sirve para saber si sigue abierta. */
+setInterval(() => fetch("/latido", {method:"POST"}).catch(() => {}), 5000);
+fetch("/latido", {method:"POST"}).catch(() => {});
+
+addEventListener("pagehide", () => {
+  // sendBeacon sobrevive al cierre de la ventana; fetch normal no
+  navigator.sendBeacon?.("/cerrar") || fetch("/cerrar", {method:"POST", keepalive:true});
+});
+
 // el nombre del lanzador cambia segun el sistema; el destino real es Windows
 $("#lanzador").textContent = /win/i.test(navigator.platform || navigator.userAgent)
   ? "Iniciar sistema.bat" : "Iniciar sistema.command";

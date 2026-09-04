@@ -31,6 +31,15 @@ El Excel tiene una hoja **Todos** con el historial completo y una columna
 Corregir un expediente NO cambia su mes: sigue archivado donde se cargó.
 
 ## Decisiones de diseño
+- **La ventana avisa que sigue viva, y eso decide cuándo apagar.** La página
+  manda un latido cada 5 segundos y un aviso al cerrarse. Vigilar el proceso
+  del navegador no sirve: en Windows delega la ventana en otro proceso suyo y
+  el que se lanzó muere al instante, así que o se apagaba la app con la ventana
+  abierta o quedaba corriendo para siempre sin ventana (un proceso fantasma en
+  el Administrador de tareas). Cierre normal: se apaga al instante. Si el
+  navegador se cuelga: a los 20 segundos sin latido.
+- **Una sola instancia.** Si el puerto ya está tomado por el sistema, no se
+  levanta un segundo servidor: se abre una ventana contra el que ya corre.
 - **Ventana de aplicación sin dependencias nuevas.** Se usa el modo `--app` del
   navegador (Edge viene con Windows), que da una ventana sin barra de
   direcciones ni pestañas y con su ícono en la barra de tareas. pywebview daría

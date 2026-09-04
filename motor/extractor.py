@@ -264,10 +264,16 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
     if usar_ocr:
         import ocr as _ocr
         formularios = por_tipo.get("formulario_t", [])
-        if formularios and not _ocr.disponible():
-            exp.avisos.append(
-                "Tesseract no está instalado: no se pudieron leer las páginas "
-                "escaneadas. La fecha de cese y la carrera quedan sin completar.")
+        if formularios:
+            # no alcanza con que el archivo exista: hay que poder EJECUTARLO.
+            # Si no, la carrera y el cese quedarían vacíos sin explicación.
+            ok, detalle = _ocr.diagnostico()
+            if not ok:
+                exp.avisos.append(
+                    f"No se pueden leer las páginas escaneadas: {detalle} "
+                    f"La fecha de cese y la carrera quedan sin completar; "
+                    f"cargalas a mano.")
+                formularios = []
         for d in formularios:
             paginas = _ocr.paginas_escaneadas_de(d)
             if not paginas:

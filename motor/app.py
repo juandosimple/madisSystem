@@ -8,11 +8,13 @@ lo unico que cambia es quien responde del otro lado.
 """
 import base64
 import json
+import time
 import threading
 import uuid
 import sys
 import tempfile
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -35,6 +37,15 @@ PUERTO = 8765
 
 # analisis en curso: {id: {estado, paso, resultado, error}}
 TRABAJOS = {}
+
+# La ventana avisa cada pocos segundos que sigue abierta. Es el unico modo
+# confiable de saberlo: en Windows el navegador delega la ventana en otro
+# proceso y el que lanzamos termina enseguida, asi que esperar a que ese
+# proceso muera dejaba la app corriendo para siempre sin ventana a la vista.
+LATIDO = {"ultimo": 0.0, "hubo": False}
+SILENCIO_MAXIMO = 20      # segundos sin latido -> se considera cerrada
+ESPERA_INICIAL = 90       # margen para que la ventana abra la primera vez
+APAGAR = threading.Event()
 
 
 def _detalle_error(e):
@@ -80,6 +91,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(cuerpo)))
             self.end_headers()
             self.wfile.write(cuerpo)
+        elif self.path == "/vivo":
+            self._json({"app": "expedientes-gedo"})
+        elif self.path == "/latido":
+            LATIDO["ultimo"] = time.time()
+            LATIDO["hubo"] = True
+            self._json({"ok": True})
         elif self.path == "/historial":
             # se mandan las columnas junto al historial: si el usuario abre un
             # expediente guardado sin haber analizado nada todavía, el
@@ -102,6 +119,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self.arrancar(self._leer_json()))
             elif self.path == "/guardar":
                 self._json(self.guardar(self._leer_json()))
+            elif self.path == "/latido":
+                LATIDO["ultimo"] = time.time()
+                LATIDO["hubo"] = True
+                self._json({"ok": True})
+            elif self.path == "/cerrar":
+                # la ventana avisa que se está cerrando
+                APAGAR.set()
+                self._json({"ok": True})
             elif self.path == "/eliminar":
                 datos = self._leer_json()
                 borrados = almacen.eliminar(datos.get("expediente", ""))
@@ -189,40 +214,70 @@ class Servidor(ThreadingHTTPServer):
     daemon_threads = True
 
 
+def _vigilar():
+    """Apaga la app cuando la ventana deja de dar señales de vida."""
+    inicio = time.time()
+    while not APAGAR.is_set():
+        APAGAR.wait(3)
+        if APAGAR.is_set():
+            return
+        if LATIDO["hubo"]:
+            if time.time() - LATIDO["ultimo"] > SILENCIO_MAXIMO:
+                print("La ventana se cerró: apagando.")
+                APAGAR.set()
+        elif time.time() - inicio > ESPERA_INICIAL:
+            # nunca llegó un latido: la ventana no llegó a abrir
+            print("No se recibió señal de la ventana: apagando.")
+            APAGAR.set()
+
+
+def _ya_corriendo(url):
+    """¿Hay otra instancia NUESTRA en el puerto?"""
+    try:
+        with urllib.request.urlopen(url + "/vivo", timeout=3) as r:
+            return json.loads(r.read()).get("app") == "expedientes-gedo"
+    except Exception:
+        return False
+
+
 def main():
     url = f"http://127.0.0.1:{PUERTO}"
     try:
         servidor = Servidor(("127.0.0.1", PUERTO), Handler)
     except OSError:
-        # le puede pasar a cualquiera que abra la app dos veces
-        print(f"\nNo se pudo iniciar: el puerto {PUERTO} ya está en uso.")
-        print("Probablemente el sistema ya esté abierto en otra ventana.")
-        print(f"Abrí {url} en el navegador, o cerrá la otra ventana y reintentá.\n")
+        # Una sola instancia: en vez de fallar, se le muestra la que ya está.
+        if _ya_corriendo(url):
+            print("El sistema ya estaba abierto: se muestra esa ventana.")
+            ventana.abrir(url)
+            return 0
+        print(f"\nNo se pudo iniciar: el puerto {PUERTO} está ocupado por otro "
+              f"programa.\nCerrá ese programa y volvé a intentar.\n")
         return 1
 
-    # El servidor pasa a un hilo de fondo y la ventana queda al frente: asi,
-    # cuando la persona cierra la ventana, se cierra la aplicacion entera.
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
-    print(f"Sistema de expedientes corriendo en {url}")
+    print(f"Sistema de expedientes corriendo en {url}", flush=True)
+
+    # queda asentado al arrancar: si el OCR no funciona en esta máquina, el
+    # registro lo dice sin que haya que reproducir el problema
+    import ocr
+    ok, detalle = ocr.diagnostico()
+    print(("OCR: " if ok else "OCR NO DISPONIBLE: ") + detalle, flush=True)
+
+    threading.Thread(target=_vigilar, daemon=True).start()
+    try:
+        ventana.abrir(url)          # ya no bloquea: la vida la marca el latido
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"No se pudo abrir la ventana ({e}); seguí en {url}", flush=True)
 
     try:
-        cerro = ventana.abrir(url)
-    except Exception as e:            # si la ventana falla, no perder la app
-        import traceback; traceback.print_exc()
-        print(f"No se pudo abrir la ventana ({e}); seguí en {url}")
-        cerro = False
-
-    if not cerro:
-        # quedo en una pestana comun: hay que sostener el proceso a mano
-        print("Cerrá esta ventana o Ctrl+C para detener el sistema.")
-        try:
-            while True:
-                threading.Event().wait(3600)
-        except KeyboardInterrupt:
+        while not APAGAR.wait(1):
             pass
+    except KeyboardInterrupt:
+        pass
 
     servidor.shutdown()
-    print("Sistema detenido.")
+    print("Sistema detenido.", flush=True)
     return 0
 
 

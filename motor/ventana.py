@@ -14,7 +14,6 @@ Se intentan tres caminos, de mejor a peor:
 """
 import shutil
 import subprocess
-import time
 import sys
 import webbrowser
 from pathlib import Path
@@ -80,30 +79,17 @@ def _modo_app(url):
 
 
 def abrir(url):
-    """Muestra la interfaz y BLOQUEA hasta que el usuario cierre la ventana.
+    """Muestra la interfaz y vuelve enseguida.
 
-    Devuelve True si se pudo esperar el cierre (y por lo tanto conviene apagar
-    el servidor), False si quedo abierto en una pestana comun.
+    NO se espera a que el proceso del navegador termine. En Windows el
+    navegador delega la ventana en otro proceso suyo y el que lanzamos muere al
+    instante, asi que esperarlo daba dos resultados igual de malos: apagar la
+    app con la ventana todavia abierta, o dejarla corriendo para siempre. Quien
+    marca la vida de la app es el latido que manda la propia pagina.
     """
     if _con_pywebview(url):
         return True
-
-    proceso = _modo_app(url)
-    if proceso is not None:
-        arranque = time.time()
-        try:
-            proceso.wait()
-        except KeyboardInterrupt:
-            proceso.terminate()
-            return True
-        # Si el navegador salió enseguida, no fue el usuario cerrando: delegó
-        # la ventana en otra instancia suya y terminó. La ventana sigue abierta,
-        # así que el servidor NO puede apagarse.
-        if time.time() - arranque < 3:
-            print("El navegador delegó la ventana en otra instancia; "
-                  "el sistema queda abierto.")
-            return False
+    if _modo_app(url) is not None:
         return True
-
     webbrowser.open(url)
     return False

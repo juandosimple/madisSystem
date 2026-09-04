@@ -38,6 +38,32 @@ def disponible():
     return bool(ruta_tesseract())
 
 
+def diagnostico():
+    """Comprueba que tesseract se pueda EJECUTAR y tenga español.
+
+    No alcanza con que el archivo exista: empaquetado puede faltarle una DLL y
+    fallar al arrancar. Sin esta comprobacion el usuario recibiria la carrera y
+    la fecha de cese vacias sin ninguna explicacion.
+    """
+    ruta = ruta_tesseract()
+    if not ruta:
+        return False, "No se encontró Tesseract."
+    try:
+        r = subprocess.run([ruta, "--list-langs"], capture_output=True, text=True,
+                           errors="replace", stdin=subprocess.DEVNULL, timeout=30,
+                           env=entorno_tesseract(), **SIN_CONSOLA)
+    except OSError as e:
+        return False, (f"Tesseract está en {ruta} pero no se pudo ejecutar ({e}). "
+                       f"Puede faltarle una DLL.")
+    except subprocess.TimeoutExpired:
+        return False, f"Tesseract ({ruta}) no respondió."
+    idiomas = (r.stdout or "").split()
+    if "spa" not in idiomas:
+        return False, (f"Tesseract funciona pero no tiene el idioma español "
+                       f"(tiene: {', '.join(idiomas[1:]) or 'ninguno'}).")
+    return True, f"Tesseract listo en {ruta}"
+
+
 def _huella(ruta, pagina, dpi):
     h = hashlib.sha1(Path(ruta).read_bytes()).hexdigest()[:16]
     return CACHE / f"{h}_p{pagina}_{dpi}.txt"
@@ -63,6 +89,7 @@ def ocr_pagina(ruta_pdf, pagina, idioma="spa", dpi=DPI):
             r = subprocess.run(
                 [ruta_tesseract(), str(png), "-", "-l", idioma, "--psm", "6"],
                 capture_output=True, text=True, errors="replace",
+                stdin=subprocess.DEVNULL,
                 env=entorno_tesseract(), **SIN_CONSOLA)
             salida = r.stdout
         except OSError:
@@ -173,7 +200,8 @@ def _tsv(png, psm="6", extra=None):
         return []
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
-                           errors="replace", env=entorno_tesseract(), **SIN_CONSOLA)
+                           errors="replace", stdin=subprocess.DEVNULL,
+                           env=entorno_tesseract(), **SIN_CONSOLA)
     except OSError:                       # tesseract ausente o sin permisos
         return []
     palabras = []
