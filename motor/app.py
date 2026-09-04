@@ -44,6 +44,11 @@ TRABAJOS = {}
 # confiable de saberlo: en Windows el navegador delega la ventana en otro
 # proceso y el que lanzamos termina enseguida, asi que esperar a que ese
 # proceso muera dejaba la app corriendo para siempre sin ventana a la vista.
+# Identificador de esta ejecucion. La pagina lo repite en cada latido y en el
+# aviso de cierre: asi una ventana vieja, abierta de una ejecucion anterior, no
+# puede apagar la instancia nueva al cerrarse.
+SESION = uuid.uuid4().hex[:12]
+
 LATIDO = {"ultimo": 0.0, "hubo": False}
 SILENCIO_MAXIMO = 20      # segundos sin latido -> se considera cerrada
 ESPERA_INICIAL = 90       # margen para que la ventana abra la primera vez
@@ -81,6 +86,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def _es_de_esta_sesion(self):
+        consulta = urllib.parse.urlparse(self.path).query
+        return urllib.parse.parse_qs(consulta).get("s", [""])[0] == SESION
+
+    def _latir(self):
+        if not self._es_de_esta_sesion():
+            return False
+        LATIDO["ultimo"] = time.time()
+        LATIDO["hubo"] = True
+        return True
+
     def _leer_json(self):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
@@ -91,7 +107,8 @@ class Handler(BaseHTTPRequestHandler):
             ident = self.path.partition("=")[2]
             self._json(TRABAJOS.get(ident, {"estado": "desconocido"}))
         elif self.path in ("/", "/index.html"):
-            cuerpo = recurso("ui.html").read_bytes()
+            cuerpo = recurso("ui.html").read_text(encoding="utf-8") \
+                .replace("__SESION__", SESION).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(cuerpo)))
@@ -114,10 +131,8 @@ class Handler(BaseHTTPRequestHandler):
                 "buscada": NOVEDAD["buscada"],
                 "novedad": NOVEDAD["info"],
             })
-        elif self.path == "/latido":
-            LATIDO["ultimo"] = time.time()
-            LATIDO["hubo"] = True
-            self._json({"ok": True})
+        elif self.path.startswith("/latido"):
+            self._json({"ok": self._latir()})
         elif self.path == "/historial":
             # se mandan las columnas junto al historial: si el usuario abre un
             # expediente guardado sin haber analizado nada todavía, el
@@ -140,15 +155,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self.arrancar(self._leer_json()))
             elif self.path == "/guardar":
                 self._json(self.guardar(self._leer_json()))
-            elif self.path == "/latido":
-                LATIDO["ultimo"] = time.time()
-                LATIDO["hubo"] = True
-                self._json({"ok": True})
+            elif self.path.startswith("/latido"):
+                self._json({"ok": self._latir()})
             elif self.path == "/actualizar":
                 self._json(self.actualizar())
-            elif self.path == "/cerrar":
-                # la ventana avisa que se está cerrando
-                APAGAR.set()
+            elif self.path.startswith("/cerrar"):
+                # la ventana avisa que se está cerrando; se ignora si viene de
+                # una ventana de otra ejecución, que si no apagaría esta
+                if self._es_de_esta_sesion():
+                    APAGAR.set()
                 self._json({"ok": True})
             elif self.path == "/eliminar":
                 datos = self._leer_json()

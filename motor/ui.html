@@ -73,16 +73,29 @@
          padding:10px 14px;border-radius:0 7px 7px 0;font-size:13px;margin-bottom:8px}
   .aviso.grave{background:var(--falta-f);border-left-color:var(--falta)}
 
-  .acciones{display:flex;gap:12px;align-items:center;margin-top:22px}
+  .acciones{display:flex;gap:10px;align-items:center;margin-top:22px;flex-wrap:wrap}
   button{font:inherit;font-weight:600;padding:11px 20px;border-radius:8px;
-         border:1px solid transparent;cursor:pointer}
+         border:1px solid transparent;cursor:pointer;white-space:nowrap}
   .primario{background:var(--acento);color:#fff}
   .primario:hover{background:#2a4a80}
   .primario:disabled{background:#aab6c8;cursor:not-allowed}
   .secundario{background:#fff;border-color:var(--linea);color:var(--tinta)}
   .secundario:hover{background:#f0f3f8}
-  #estado{font-size:13px;color:var(--suave)}
+  /* "Abrir Excel" es una acción secundaria: se separa de las dos decisiones */
+  .acciones .aparte{margin-left:auto}
   .oculto{display:none}
+
+  /* ---------- aviso pasajero ---------- */
+  #toast{position:fixed;left:50%;bottom:30px;z-index:60;max-width:min(560px,90vw);
+         transform:translateX(-50%) translateY(14px);opacity:0;pointer-events:none;
+         background:var(--tinta);color:#fff;padding:13px 20px;border-radius:10px;
+         font-size:13.5px;line-height:1.45;box-shadow:0 8px 26px rgba(16,32,46,.28);
+         transition:opacity .18s, transform .18s}
+  #toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.bien{background:#0f7b4f}
+  #toast.aviso{background:#8a5a00}
+  #toast.mal{background:#a32c2c}
+  @media (prefers-reduced-motion:reduce){ #toast{transition:opacity .18s} }
 
   /* ---------- elegir entre valores en conflicto ---------- */
   .eleccion{display:flex;flex-direction:column;gap:7px;margin-top:2px}
@@ -295,26 +308,41 @@
       <div class="acciones">
         <button class="primario" id="btn-guardar">Extraer datos a Excel</button>
         <button class="secundario" id="btn-corregir">Marcar para corregir</button>
-        <button class="secundario" id="btn-abrir">Abrir Excel</button>
-        <button class="secundario" id="btn-otro">Cargar otro expediente</button>
-        <span id="estado"></span>
+        <button class="secundario aparte" id="btn-abrir">Abrir Excel</button>
       </div>
     </div>
   </section>
 </main>
 
+<div id="toast"></div>
+
 <script>
 const $ = s => document.querySelector(s);
+
+/* Aviso pasajero. Los mensajes de resultado no tienen por qué ocupar lugar en
+   la fila de botones ni quedar ahí para siempre: aparecen, se leen y se van. */
+let relojToast;
+function avisar(texto, tono = "", segundos = 5){
+  const t = $("#toast");
+  t.textContent = texto;
+  t.className = "visible " + tono;
+  clearTimeout(relojToast);
+  relojToast = setTimeout(() => { t.className = ""; }, segundos * 1000);
+}
 
 /* La app se apaga sola cuando esta página deja de dar señales de vida. Es lo
    único confiable: en Windows el navegador delega la ventana en otro proceso,
    así que vigilar el proceso que lanzamos no sirve para saber si sigue abierta. */
-setInterval(() => fetch("/latido", {method:"POST"}).catch(() => {}), 5000);
-fetch("/latido", {method:"POST"}).catch(() => {});
+// el servidor sella la página con el identificador de su ejecución
+const SESION = "__SESION__";
+const latir = () => fetch("/latido?s=" + SESION, {method:"POST"}).catch(() => {});
+setInterval(latir, 5000);
+latir();
 
 addEventListener("pagehide", () => {
   // sendBeacon sobrevive al cierre de la ventana; fetch normal no
-  navigator.sendBeacon?.("/cerrar") || fetch("/cerrar", {method:"POST", keepalive:true});
+  const url = "/cerrar?s=" + SESION;
+  navigator.sendBeacon?.(url) || fetch(url, {method:"POST", keepalive:true});
 });
 
 // el nombre del lanzador cambia segun el sistema; el destino real es Windows
@@ -549,7 +577,7 @@ async function guardarExpediente({observado}){
 
   const boton = observado ? $("#btn-corregir") : $("#btn-guardar");
   boton.disabled = true;
-  $("#estado").textContent = "Guardando…";
+  avisar("Guardando…", "", 30);
   let res;
   try{
     const r = await fetch("/guardar", {method:"POST",
@@ -557,16 +585,19 @@ async function guardarExpediente({observado}){
                             observado, observacion})});
     res = await r.json();
   }catch(e){
-    boton.disabled = false; $("#estado").textContent = "";
+    boton.disabled = false;
     mostrar("caido");
     return;
   }
   boton.disabled = false;
-  if(res.error){ $("#estado").textContent = ""; alert(res.error); return; }
+  if(res.error){ avisar(res.error, "mal", 8); return; }
 
-  $("#estado").textContent = observado
-    ? `Anotado como pendiente. No entró al Excel. (${res.observados} pendiente(s))`
-    : `Listo — ${res.total} expediente(s) en el Excel.`;
+  if(observado){
+    avisar(`Anotado como pendiente de corrección: no entró al Excel. ` +
+           `Quedan ${res.observados} pendiente(s).`, "aviso", 8);
+  } else {
+    avisar(`Guardado. Ya son ${res.total} expediente(s) en el Excel.`, "bien");
+  }
 }
 
 $("#btn-guardar").addEventListener("click", () => guardarExpediente({observado:false}));
@@ -637,23 +668,22 @@ function pintarActualizacion(buscada){
   if(NOVEDAD){
     texto.innerHTML = `<span class="senal nuevo">versión ${NOVEDAD.version} disponible</span>` +
                       (NOVEDAD.notas ? "\n" + NOVEDAD.notas : "");
-    acciones.innerHTML = `<button class="primario" id="btn-actualizar">Actualizar ahora</button>
-                          <span id="av-estado"></span>`;
+    acciones.innerHTML = `<button class="primario" id="btn-actualizar">Actualizar ahora</button>`;
     $("#btn-actualizar").addEventListener("click", actualizar);
   } else {
     texto.textContent = buscada ? "Estás usando la última versión."
                                 : "Comprobando si hay una versión nueva…";
-    acciones.innerHTML = `<button class="secundario mini" id="btn-buscar">Buscar ahora</button>
-                          <span id="av-estado"></span>`;
+    acciones.innerHTML = `<button class="secundario mini" id="btn-buscar">Buscar ahora</button>`;
     $("#btn-buscar").addEventListener("click", async () => {
-      $("#av-estado").textContent = "Buscando…";
+      avisar("Buscando actualizaciones…", "", 20);
       try{
         const r = await (await fetch("/buscar-actualizacion", {method:"POST"})).json();
         NOVEDAD = r.novedad;
         $("#punto-nuevo").classList.toggle("oculto", !NOVEDAD);
         pintarActualizacion(true);
-        if(!NOVEDAD) $("#av-estado").textContent = "Sin novedades.";
-      }catch(e){ $("#av-estado").textContent = "No se pudo comprobar."; }
+        avisar(NOVEDAD ? `Hay una versión nueva: ${NOVEDAD.version}.`
+                       : "Estás usando la última versión.", NOVEDAD ? "aviso" : "bien");
+      }catch(e){ avisar("No se pudo comprobar si hay actualizaciones.", "mal"); }
     });
   }
 }
@@ -663,17 +693,17 @@ async function actualizar(){
               "La aplicación se va a cerrar durante la instalación. " +
               "Los expedientes cargados y el Excel no se tocan.")) return;
   $("#btn-actualizar").disabled = true;
-  $("#av-estado").textContent = "Descargando…";
+  avisar("Descargando la actualización…", "", 120);
   try{
     const {id, error} = await (await fetch("/actualizar", {method:"POST"})).json();
     if(error) throw new Error(error);
     while(true){
       const e = await (await fetch("/progreso?id=" + id)).json();
-      if(e.paso) $("#av-estado").textContent = e.paso;
+      if(e.paso) avisar(e.paso, "", 120);
       if(e.estado === "listo"){
         // el mensaje lo decide el backend: en Windows instala solo, en macOS
         // hay que arrastrar la app nueva
-        $("#av-estado").textContent = e.resultado?.mensaje || "Listo.";
+        avisar(e.resultado?.mensaje || "Listo.", "bien", 20);
         return;
       }
       if(e.estado === "error") throw new Error(e.error);
@@ -681,8 +711,7 @@ async function actualizar(){
     }
   }catch(e){
     $("#btn-actualizar").disabled = false;
-    $("#av-estado").textContent = "";
-    alert("No se pudo actualizar:\n\n" + e.message);
+    avisar("No se pudo actualizar: " + e.message, "mal", 10);
   }
 }
 
@@ -780,12 +809,10 @@ function abrirGuardado(g){
 }
 
 $("#btn-nuevo").addEventListener("click", nuevoExpediente);
-$("#btn-otro").addEventListener("click", nuevoExpediente);
 
 function nuevoExpediente(){
   actual = null; input.value = "";
   mostrar(null);
-  $("#estado").textContent = "";
   $("#corregir").classList.add("oculto");
   $("#motivo").value = "";
   $("#btn-corregir").textContent = "Marcar para corregir";
