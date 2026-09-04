@@ -80,12 +80,16 @@ Windows, y la forma más simple es que lo haga GitHub gratis:
     git push -u origin main
 
 Después, en la pestaña **Actions** del repositorio → *Instalador Windows* →
-**Run workflow**. Ahí se puede indicar una versión (por ejemplo `1.0.0`):
+**Run workflow**. El campo *Versión* viene con `1.0.0` por defecto, así que
+ejecutarlo sin tocar nada ya publica un **Release** con el instalador y el .zip
+portable adjuntos.
 
-- **Con versión** → además de compilar, publica un **Release** con el
-  instalador y el .zip portable adjuntos. Es lo que conviene para entregar.
-- **Sin versión** → solo deja *artifacts*, al final de la página de la corrida.
-  Sirven para probar; caducan a los 90 días y NO aparecen en Releases.
+Si se vacía ese campo, solo quedan *artifacts*: están al pie de la página de la
+corrida, caducan a los 90 días y NO aparecen en la solapa Releases. El resumen
+de cada corrida dice cuál de las dos cosas pasó.
+
+Volver a ejecutar con una versión ya publicada reemplaza los archivos de ese
+release en lugar de fallar.
 
 También se dispara empujando una etiqueta:
 
