@@ -111,6 +111,10 @@ class Handler(BaseHTTPRequestHandler):
                 .replace("__SESION__", SESION).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            # Sin esto el navegador puede seguir mostrando la pantalla vieja
+            # después de actualizar la app, y no hay forma de darse cuenta.
+            self.send_header("Cache-Control", "no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
             self.send_header("Content-Length", str(len(cuerpo)))
             self.end_headers()
             self.wfile.write(cuerpo)
