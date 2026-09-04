@@ -46,6 +46,7 @@
   .campo.ancho{grid-column:1/-1}
   label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
   .estado{font-weight:400;font-size:11px;padding:1px 7px;border-radius:20px;margin-left:6px}
+  .e-guardado{background:#eef0ff;color:#3b3fa8}
   .e-verificado{background:var(--ok-f);color:var(--ok)}
   .e-una_fuente{background:var(--aviso-f);color:var(--aviso)}
   .e-revisar_lectura{background:#f3ecfb;color:#6b3fa0}
@@ -82,6 +83,36 @@
   #estado{font-size:13px;color:var(--suave)}
   .oculto{display:none}
 
+  /* ---------- historial ---------- */
+  .barra-sup{display:flex;justify-content:space-between;align-items:center;
+             max-width:1040px;margin:0 auto;padding:0 28px}
+  .enlace{background:none;border:none;color:#fff;opacity:.85;font:inherit;
+          font-size:13px;cursor:pointer;padding:6px 0;text-decoration:underline}
+  .enlace:hover{opacity:1}
+  .mes{border:1px solid var(--linea);border-radius:10px;margin-bottom:12px;
+       overflow:hidden;background:var(--panel)}
+  .mes>summary{padding:12px 16px;cursor:pointer;font-weight:600;font-size:14px;
+               background:#f7f9fc;list-style:none;display:flex;
+               justify-content:space-between;align-items:center;gap:10px}
+  .mes>summary::-webkit-details-marker{display:none}
+  .mes>summary::before{content:"▸";color:var(--suave);font-size:11px}
+  .mes[open]>summary::before{content:"▾"}
+  .mes>summary span:first-of-type{flex:1}
+  .cuenta{font-weight:400;font-size:12px;color:var(--suave)}
+  .exp{display:flex;align-items:center;gap:12px;padding:11px 16px;
+       border-top:1px solid #eef1f6;font-size:13px}
+  .exp:hover{background:#f7f9fc}
+  .exp .quien{font-weight:600;min-width:190px}
+  .exp .detalle{flex:1;color:var(--suave);font-size:12.5px}
+  .exp .num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+            color:var(--suave)}
+  .mini{font:inherit;font-size:12px;padding:5px 11px;border-radius:6px;
+        border:1px solid var(--linea);background:#fff;cursor:pointer;color:var(--tinta)}
+  .mini:hover{background:#eef3fb;border-color:var(--acento)}
+  .mini.riesgo:hover{background:var(--falta-f);border-color:var(--falta);
+                     color:var(--falta)}
+  .vacio{padding:26px;text-align:center;color:var(--suave);font-size:13.5px}
+
   /* ---------- preloader ---------- */
   #cargando{background:var(--panel);border:1px solid var(--linea);border-radius:12px;
             padding:34px 26px;margin-top:20px;text-align:center}
@@ -113,8 +144,13 @@
 </head>
 <body>
 <header>
-  <h1>Expedientes GEDO → Excel</h1>
-  <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
+  <div class="barra-sup">
+    <div>
+      <h1>Expedientes GEDO → Excel</h1>
+      <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
+    </div>
+    <button class="enlace" id="btn-historial">Ver historial</button>
+  </div>
 </header>
 
 <main>
@@ -123,6 +159,11 @@
     <p>Carátula, declaración jurada, formulario T y dictamen — de a un expediente por vez</p>
     <input type="file" id="archivos" accept="application/pdf" multiple class="oculto">
   </div>
+
+  <section id="historial" class="panel oculto">
+    <h3>Historial de expedientes cargados</h3>
+    <div id="meses"></div>
+  </section>
 
   <section id="cargando" class="oculto">
     <div class="spinner"></div>
@@ -172,12 +213,16 @@ const ETIQUETA_TIPO = {
   formulario_t:"Formulario T", dictamen:"Dictamen / Informe",
   desconocido:"No identificado"
 };
+// se fijan al primer análisis y sirven para redibujar un expediente guardado
+let COLUMNAS_GUARDADAS = [];
+
 const ETIQUETA_ESTADO = {
   verificado:   "verificado en 2+ documentos",
   una_fuente:   "una sola fuente",
   revisar_lectura: "el escaneado se leyó distinto",
   discrepancia: "NO COINCIDEN",
-  no_encontrado:"falta"
+  no_encontrado:"falta",
+  guardado:     "guardado"
 };
 
 /* ------------------------------------------------ drag & drop ------------ */
@@ -251,7 +296,7 @@ function fijarPaso(texto, detalle){
 }
 
 function mostrar(cual){
-  ["cargando","caido","resultado"].forEach(id =>
+  ["cargando","caido","resultado","historial"].forEach(id =>
     $("#" + id).classList.toggle("oculto", id !== cual));
   if(cual) $("#" + cual).scrollIntoView({behavior:"smooth", block:"center"});
 }
@@ -262,6 +307,7 @@ function avisarVacio(){
 
 /* ------------------------------------------------ render --------------- */
 function dibujar(d){
+  if(d.columnas?.length) COLUMNAS_GUARDADAS = d.columnas;
   $("#docs").innerHTML = d.documentos.map(doc => `
     <div class="doc">
       <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
@@ -348,6 +394,90 @@ $("#btn-guardar").addEventListener("click", async () => {
 
 $("#btn-abrir").addEventListener("click", () =>
   fetch("/abrir-excel", {method:"POST"}));
+
+/* ------------------------------------------------ historial ------------ */
+$("#btn-historial").addEventListener("click", async () => {
+  if(!$("#historial").classList.contains("oculto")){ mostrar(null); return; }
+  await dibujarHistorial();
+});
+
+async function dibujarHistorial(){
+  let datos;
+  try{ datos = await (await fetch("/historial")).json(); }
+  catch(e){ mostrar("caido"); return; }
+  if(datos.columnas?.length) COLUMNAS_GUARDADAS = datos.columnas;
+
+  const caja = $("#meses");
+  if(!datos.meses.length){
+    caja.innerHTML = `<div class="vacio">Todavía no cargaste ningún expediente.</div>`;
+  } else {
+    // el mes más reciente viene primero y arranca desplegado
+    caja.innerHTML = datos.meses.map((m, i) => `
+      <details class="mes"${i === 0 ? " open" : ""}>
+        <summary>
+          <span>${m.titulo}</span>
+          <span class="cuenta">${m.expedientes.length} expediente(s)</span>
+        </summary>
+        ${m.expedientes.map(e => `
+          <div class="exp">
+            <span class="quien">${e.docente || "(sin nombre)"}</span>
+            <span class="detalle">
+              ${[e.instituto, e.materia].filter(Boolean).join(" · ")}
+              <br><span class="num">${e.expediente}</span>
+              — importado ${e.creado.slice(0,16).replace("T"," ")}
+              ${e.editado ? " · corregido " + e.editado.slice(0,16) : ""}
+            </span>
+            <button class="mini" data-abrir="${e.expediente}">Ver y corregir</button>
+            <button class="mini riesgo" data-borrar="${e.expediente}">Quitar</button>
+          </div>`).join("")}
+      </details>`).join("");
+  }
+  mostrar("historial");
+}
+
+// se delegan los clics: los botones se redibujan con cada refresco
+$("#meses").addEventListener("click", async e => {
+  const abrir  = e.target.dataset?.abrir;
+  const borrar = e.target.dataset?.borrar;
+
+  if(abrir){
+    const g = await (await fetch("/expediente?id=" + encodeURIComponent(abrir))).json();
+    if(g.error){ alert(g.error); return; }
+    abrirGuardado(g);
+  }
+
+  if(borrar){
+    if(!confirm(`¿Quitar ${borrar} del historial?\n\n` +
+                `Se borra la fila del Excel. Los PDFs no se tocan.`)) return;
+    await fetch("/eliminar", {method:"POST",
+      body: JSON.stringify({expediente: borrar})});
+    await dibujarHistorial();
+  }
+});
+
+/* Abre un expediente ya guardado en el mismo formulario de revisión. No se
+   reprocesan los PDFs: se muestran los valores tal como quedaron guardados. */
+function abrirGuardado(g){
+  nombresArchivos = g.archivos || [];
+  const campos = {};
+  actual = {
+    columnas: COLUMNAS_GUARDADAS,
+    campos,
+    documentos: (g.archivos || []).map(n => ({nombre:n, tipo:"guardado",
+                                              paginas:0, escaneadas:0, firmas:2})),
+    avisos: [`Expediente guardado el ${g.creado.slice(0,16)}. ` +
+             `Los valores son los que se confirmaron entonces, no se releyeron ` +
+             `los PDFs. Si lo guardás de nuevo, se actualiza la fila.`],
+    carreras_sugeridas: [],
+    duplicado: true,
+  };
+  COLUMNAS_GUARDADAS.forEach(c => {
+    campos[c.clave] = {valor: g.valores[c.clave] || "", estado: "guardado",
+                       origen: "", nota: ""};
+  });
+  mostrar("resultado");
+  dibujar(actual);
+}
 
 $("#btn-otro").addEventListener("click", () => {
   actual = null; input.value = "";

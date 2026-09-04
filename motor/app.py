@@ -12,6 +12,7 @@ import threading
 import uuid
 import sys
 import tempfile
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,10 +66,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(cuerpo)))
             self.end_headers()
             self.wfile.write(cuerpo)
-        elif self.path == "/listado":
-            self._json({"filas": [
-                {"expediente": e, "valores": v, "archivos": a, "creado": c}
-                for e, v, a, c in almacen.listar()]})
+        elif self.path == "/historial":
+            # se mandan las columnas junto al historial: si el usuario abre un
+            # expediente guardado sin haber analizado nada todavía, el
+            # formulario necesita saber qué campos dibujar.
+            self._json({
+                "columnas": [{"clave": k, "etiqueta": e} for k, e in COLUMNAS],
+                "meses": [{**mes, "titulo": almacen.nombre_hoja(mes["mes"])}
+                          for mes in almacen.historial()]})
+        elif self.path.startswith("/expediente"):
+            consulta = urllib.parse.urlparse(self.path).query
+            ident = urllib.parse.parse_qs(consulta).get("id", [""])[0]
+            guardado = almacen.obtener(ident)
+            self._json(guardado or {"error": "No se encontró ese expediente."})
         else:
             self.send_error(404)
 
@@ -78,6 +88,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self.arrancar(self._leer_json()))
             elif self.path == "/guardar":
                 self._json(self.guardar(self._leer_json()))
+            elif self.path == "/eliminar":
+                datos = self._leer_json()
+                borrados = almacen.eliminar(datos.get("expediente", ""))
+                if borrados:
+                    almacen.exportar_excel()
+                self._json({"ok": bool(borrados),
+                            "total": len(almacen.listar())})
             elif self.path == "/abrir-excel":
                 ruta = almacen.exportar_excel()
                 abrir_archivo(ruta)

@@ -9,6 +9,7 @@ clase de errores de corrupcion del archivo.
 """
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -22,19 +23,59 @@ BASE = carpeta_datos()
 DB = BASE / "expedientes.db"
 
 
+def ahora():
+    """Hora local, no UTC.
+
+    CURRENT_TIMESTAMP de SQLite devuelve UTC. Con el huso argentino (-3), un
+    expediente cargado el 30 a las 22:00 quedaria archivado en el mes
+    siguiente. Como el archivo por mes depende de esto, se guarda local.
+    """
+    return datetime.now().isoformat(sep=" ", timespec="seconds")
+
+
+def mes_de(marca):
+    """'2026-09-04 00:30:56' -> '2026-09'"""
+    return (marca or "")[:7]
+
+
 def conectar():
     cx = sqlite3.connect(DB)
     cx.execute("""CREATE TABLE IF NOT EXISTS expedientes (
         expediente TEXT PRIMARY KEY,
         datos      TEXT NOT NULL,
         archivos   TEXT NOT NULL,
-        creado     TEXT DEFAULT CURRENT_TIMESTAMP,
-        editado    TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        creado     TEXT NOT NULL,
+        editado    TEXT NOT NULL,
+        mes        TEXT NOT NULL)""")
+    _migrar(cx)
     cx.execute("""CREATE TABLE IF NOT EXISTS carreras (
         clave   TEXT NOT NULL,
         carrera TEXT NOT NULL,
         PRIMARY KEY (clave, carrera))""")
     return cx
+
+
+def _migrar(cx):
+    """Agrega la columna mes a bases creadas antes de esta versión."""
+    columnas = {c[1] for c in cx.execute("PRAGMA table_info(expedientes)")}
+    if "mes" in columnas:
+        return
+    cx.execute("ALTER TABLE expedientes ADD COLUMN mes TEXT NOT NULL DEFAULT ''")
+    # las marcas viejas quedaron en UTC: se pasan a local antes de sacar el mes
+    for expediente, creado in cx.execute(
+            "SELECT expediente, creado FROM expedientes WHERE mes = ''").fetchall():
+        try:
+            # se descarta el huso al final: el resto del sistema guarda la hora
+            # local sin sufijo, y dejarlo daría un "+00:00" que miente
+            local = (datetime.fromisoformat(creado)
+                     .replace(tzinfo=timezone.utc).astimezone()
+                     .replace(tzinfo=None))
+            marca = local.isoformat(sep=" ", timespec="seconds")
+        except (TypeError, ValueError):
+            marca = creado or ahora()
+        cx.execute("UPDATE expedientes SET creado = ?, mes = ? WHERE expediente = ?",
+                   (marca, mes_de(marca), expediente))
+    cx.commit()
 
 
 # ------------------------------------------------------ tabla de carreras ---
@@ -68,24 +109,74 @@ def existe(expediente):
 
 
 def guardar(expediente, valores, archivos):
+    """Alta o corrección. Al corregir se conserva el mes de importación
+    original: el archivo es por cuándo se cargó, no por cuándo se tocó."""
+    marca = ahora()
     cx = conectar()
-    cx.execute("""INSERT INTO expedientes (expediente, datos, archivos) VALUES (?,?,?)
+    cx.execute("""INSERT INTO expedientes
+                    (expediente, datos, archivos, creado, editado, mes)
+                  VALUES (?,?,?,?,?,?)
                   ON CONFLICT(expediente) DO UPDATE SET
                     datos=excluded.datos, archivos=excluded.archivos,
-                    editado=CURRENT_TIMESTAMP""",
+                    editado=excluded.editado""",
                (expediente, json.dumps(valores, ensure_ascii=False),
-                json.dumps(archivos, ensure_ascii=False)))
+                json.dumps(archivos, ensure_ascii=False),
+                marca, marca, mes_de(marca)))
     cx.commit(); cx.close()
 
 
-def listar():
+def obtener(expediente):
     cx = conectar()
-    filas = [(e, json.loads(d), json.loads(a), c)
-             for e, d, a, c in cx.execute(
-                 "SELECT expediente, datos, archivos, creado "
+    fila = cx.execute("SELECT datos, archivos, creado, editado, mes "
+                      "FROM expedientes WHERE expediente = ?",
+                      (expediente,)).fetchone()
+    cx.close()
+    if not fila:
+        return None
+    datos, archivos, creado, editado, mes = fila
+    return {"expediente": expediente, "valores": json.loads(datos),
+            "archivos": json.loads(archivos), "creado": creado,
+            "editado": editado, "mes": mes}
+
+
+def eliminar(expediente):
+    cx = conectar()
+    cx.execute("DELETE FROM expedientes WHERE expediente = ?", (expediente,))
+    borrados = cx.total_changes
+    cx.commit(); cx.close()
+    return borrados
+
+
+def historial():
+    """Los expedientes agrupados por mes de importación, del más nuevo al más
+    viejo."""
+    meses = {}
+    for expediente, valores, _archivos, creado, editado, mes in _filas():
+        meses.setdefault(mes, []).append({
+            "expediente": expediente,
+            "docente": " ".join(x for x in (valores.get("apellido"),
+                                            valores.get("nombre")) if x),
+            "instituto": valores.get("instituto", ""),
+            "materia": valores.get("materia", ""),
+            "creado": creado,
+            "editado": editado if editado != creado else "",
+        })
+    return [{"mes": m, "expedientes": sorted(e, key=lambda x: x["creado"], reverse=True)}
+            for m, e in sorted(meses.items(), reverse=True)]
+
+
+def _filas():
+    cx = conectar()
+    filas = [(e, json.loads(d), json.loads(a), c, ed, m)
+             for e, d, a, c, ed, m in cx.execute(
+                 "SELECT expediente, datos, archivos, creado, editado, mes "
                  "FROM expedientes ORDER BY creado")]
     cx.close()
     return filas
+
+
+def listar():
+    return [(e, v, a, c) for e, v, a, c, _ed, _m in _filas()]
 
 
 # ------------------------------------------------------- exportar Excel -----
@@ -93,14 +184,23 @@ ENCABEZADO = PatternFill("solid", fgColor="1F3864")
 REVISAR    = PatternFill("solid", fgColor="FFF2CC")   # celda vacia / sin dato
 
 
-def exportar_excel(destino=None):
-    """Regenera el Excel completo desde SQLite."""
-    destino = Path(destino or BASE / "expedientes.xlsx")
-    wb = Workbook(); ws = wb.active; ws.title = "Expedientes"
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
-    # Los nombres de archivo se siguen guardando en SQLite para trazabilidad,
-    # pero no se exportan: en el Excel no aportan.
+
+def nombre_hoja(mes):
+    """'2026-09' -> 'Septiembre 2026'"""
+    try:
+        anio, numero = mes.split("-")
+        return f"{MESES[int(numero) - 1].capitalize()} {anio}"
+    except (ValueError, IndexError):
+        return mes or "Sin fecha"
+
+
+def _escribir_hoja(ws, filas, con_importacion):
     etiquetas = [etiqueta for _, etiqueta in COLUMNAS]
+    if con_importacion:
+        etiquetas.append("Importado")
     ws.append(etiquetas)
     for i in range(1, len(etiquetas) + 1):
         c = ws.cell(row=1, column=i)
@@ -108,8 +208,10 @@ def exportar_excel(destino=None):
         c.fill = ENCABEZADO
         c.alignment = Alignment(vertical="center", wrap_text=True)
 
-    for _expediente, valores, _archivos, _ in listar():
+    for _expediente, valores, _archivos, creado in filas:
         fila = [valores.get(k, "") for k, _ in COLUMNAS]
+        if con_importacion:
+            fila.append(creado)
         ws.append(fila)
         r = ws.max_row
         for i, (clave, _) in enumerate(COLUMNAS, start=1):
@@ -117,11 +219,34 @@ def exportar_excel(destino=None):
                 ws.cell(row=r, column=i).fill = REVISAR   # resaltar lo que falta
 
     anchos = {"Instituto": 18, "N° de expediente": 34, "Descripción": 40,
-              "Materia": 42, "Carrera": 38, "Cantidad de firmas": 18}
+              "Materia": 42, "Carrera": 38, "Cantidad de firmas": 18,
+              "Importado": 20}
     for i, etiqueta in enumerate(etiquetas, start=1):
         ws.column_dimensions[get_column_letter(i)].width = anchos.get(etiqueta, 16)
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = ws.dimensions
+    if ws.max_row > 1:
+        ws.auto_filter.ref = ws.dimensions
+
+
+def exportar_excel(destino=None):
+    """Regenera el Excel completo desde SQLite.
+
+    Una hoja "Todos" con el historial entero, y despues una hoja por mes de
+    importacion, de la mas reciente a la mas vieja.
+    """
+    destino = Path(destino or BASE / "expedientes.xlsx")
+    filas = _filas()
+
+    wb = Workbook()
+    todos = wb.active
+    todos.title = "Todos"
+    _escribir_hoja(todos, [(e, v, a, c) for e, v, a, c, _ed, _m in filas], True)
+
+    por_mes = {}
+    for e, v, a, c, _ed, mes in filas:
+        por_mes.setdefault(mes, []).append((e, v, a, c))
+    for mes in sorted(por_mes, reverse=True):
+        _escribir_hoja(wb.create_sheet(nombre_hoja(mes)), por_mes[mes], False)
 
     wb.save(destino)
     return destino

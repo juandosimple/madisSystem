@@ -16,9 +16,24 @@ Flujo: soltás los PDFs de UN expediente → revisás la fila → "Extraer datos
     datos/               la base y el Excel generado
     ejemplos/            PDFs de prueba
 
+## Historial y archivo por mes
+
+Cada expediente guardado queda en el historial, agrupado por **mes de
+importación** (cuándo se cargó, no la fecha del trámite). Desde el botón
+*Ver historial* se puede abrir uno para corregirlo o quitarlo.
+
+El Excel tiene una hoja **Todos** con el historial completo y una columna
+*Importado*, más **una hoja por mes**, de la más reciente a la más vieja.
+
+Corregir un expediente NO cambia su mes: sigue archivado donde se cargó.
+
 ## Decisiones de diseño
 - **SQLite manda, el Excel se regenera entero.** Nunca se le agregan filas al
-  .xlsx. Así los duplicados, las correcciones y la re-exportación son triviales.
+  .xlsx. Así los duplicados, las correcciones, el borrado y las hojas por mes
+  salen gratis.
+- **Las fechas se guardan en hora local, no UTC.** CURRENT_TIMESTAMP de SQLite
+  devuelve UTC: con el huso argentino, un expediente cargado el día 30 a las
+  22:00 quedaría archivado en el mes siguiente.
 - **Cada dato se coteja entre documentos.** No se lee una vez: se junta de todas
   las fuentes donde aparece y recién después se decide. El estado resultante es
   `verificado` (2+ fuentes coinciden), `una_fuente` (no se pudo contrastar) o
