@@ -138,6 +138,11 @@
                 border-radius:8px;padding:8px 14px;transition:.15s}
   .btn-cabecera:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
   .btn-cabecera.activo{background:#fff;color:var(--acento);border-color:#fff}
+  /* el botón principal se distingue de los de consulta */
+  .btn-cabecera.principal{background:#fff;color:var(--acento);border-color:#fff}
+  .btn-cabecera.principal:hover{background:#e8eefb;border-color:#e8eefb}
+  .btn-cabecera.principal::before{content:"+";font-size:16px;font-weight:700;
+                                  line-height:0.9}
   .mes{border:1px solid var(--linea);border-radius:10px;margin-bottom:12px;
        overflow:hidden;background:var(--panel)}
   .mes>summary{padding:12px 16px;cursor:pointer;font-weight:600;font-size:14px;
@@ -199,6 +204,7 @@
       <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
     </div>
     <div style="display:flex;align-items:center;gap:16px">
+      <button class="btn-cabecera principal" id="btn-nuevo">Nuevo expediente</button>
       <button class="btn-cabecera" id="btn-historial">Ver historial</button>
       <button class="btn-cabecera engranaje" id="btn-ajustes" title="Ajustes"
               aria-label="Ajustes">
@@ -418,6 +424,9 @@ function mostrar(cual){
   for(const [pantalla, boton] of Object.entries(PANTALLAS_APARTE)){
     $(boton).classList.toggle("activo", cual === pantalla);
   }
+  // "Nuevo expediente" es la vía de vuelta desde historial y ajustes, donde la
+  // zona de carga no está a la vista: ahí se resalta.
+  $("#btn-nuevo").classList.toggle("principal", aparte);
 
   // Con la zona de drop oculta, historial y ajustes ya quedan arriba: desplazar
   // solo sacaría la cabecera de vista, y con ella los botones para volver.
@@ -770,7 +779,10 @@ function abrirGuardado(g){
   dibujar(actual);
 }
 
-$("#btn-otro").addEventListener("click", () => {
+$("#btn-nuevo").addEventListener("click", nuevoExpediente);
+$("#btn-otro").addEventListener("click", nuevoExpediente);
+
+function nuevoExpediente(){
   actual = null; input.value = "";
   mostrar(null);
   $("#estado").textContent = "";
@@ -778,7 +790,7 @@ $("#btn-otro").addEventListener("click", () => {
   $("#motivo").value = "";
   $("#btn-corregir").textContent = "Marcar para corregir";
   window.scrollTo({top:0, behavior:"smooth"});
-});
+}
 </script>
 </body>
 </html>
