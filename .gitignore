@@ -1,0 +1,19 @@
+# Datos del usuario: base, Excel exportado y cache de OCR.
+datos/
+
+# Expedientes reales. NO se versionan: contienen datos personales de terceros
+# (CUIL, DNI, domicilios particulares, teléfonos, correos y firmas) protegidos
+# por la Ley 25.326 y la Ley 1.845 de CABA que citan los propios formularios.
+# El workflow de compilación no los necesita.
+ejemplos/
+
+# Artefactos de compilación
+build/
+dist/
+salida/
+motor/tesseract/
+__pycache__/
+*.pyc
+
+# Sistema
+.DS_Store

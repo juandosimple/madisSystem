@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expedientes GEDO → Excel</title>
+<style>
+  :root{
+    --tinta:#16202e; --suave:#5b6b7f; --linea:#dde4ed; --fondo:#f4f6fa;
+    --panel:#fff; --acento:#1f3864; --ok:#0f7b4f; --ok-f:#e8f6ef;
+    --aviso:#8a5a00; --aviso-f:#fff6e0; --falta:#a32c2c; --falta-f:#fdecec;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--tinta);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+  header{background:var(--acento);color:#fff;padding:18px 28px}
+  header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.2px}
+  header p{margin:3px 0 0;font-size:12.5px;opacity:.75}
+  main{max-width:1040px;margin:0 auto;padding:24px 28px 64px}
+
+  /* ---------- zona de drop ---------- */
+  #zona{border:2px dashed #b9c6d8;border-radius:12px;background:var(--panel);
+        padding:44px 24px;text-align:center;cursor:pointer;transition:.15s}
+  #zona:hover,#zona.activa{border-color:var(--acento);background:#eef3fb}
+  #zona.activa{transform:scale(1.005)}
+  #zona h2{margin:0 0 6px;font-size:16px}
+  #zona p{margin:0;color:var(--suave);font-size:13px}
+
+  /* ---------- documentos detectados ---------- */
+  .panel{background:var(--panel);border:1px solid var(--linea);border-radius:12px;
+         padding:20px 22px;margin-top:20px}
+  .panel h3{margin:0 0 14px;font-size:13px;text-transform:uppercase;
+            letter-spacing:.6px;color:var(--suave)}
+  .doc{display:flex;align-items:center;gap:10px;padding:9px 0;
+       border-bottom:1px solid #eef1f6;font-size:13px}
+  .doc:last-child{border-bottom:none}
+  .doc .nom{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .etq{font-size:11px;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .etq.tipo{background:#eaf0fa;color:var(--acento)}
+  .etq.ok{background:var(--ok-f);color:var(--ok)}
+  .etq.mal{background:var(--falta-f);color:var(--falta)}
+  .etq.scan{background:var(--aviso-f);color:var(--aviso)}
+
+  /* ---------- formulario de revisión ---------- */
+  .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px}
+  .campo.ancho{grid-column:1/-1}
+  label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+  .estado{font-weight:400;font-size:11px;padding:1px 7px;border-radius:20px;margin-left:6px}
+  .e-verificado{background:var(--ok-f);color:var(--ok)}
+  .e-una_fuente{background:var(--aviso-f);color:var(--aviso)}
+  .e-revisar_lectura{background:#f3ecfb;color:#6b3fa0}
+  .e-discrepancia{background:var(--falta-f);color:var(--falta);font-weight:600}
+  .e-no_encontrado{background:var(--falta-f);color:var(--falta)}
+  input,select{width:100%;padding:8px 10px;border:1px solid var(--linea);
+               border-radius:7px;font:inherit;background:#fff}
+  input:focus,select:focus{outline:2px solid #b9cdf0;border-color:var(--acento)}
+  input.pendiente{background:var(--aviso-f);border-color:#e8c98a}
+  input.conflicto,select.conflicto{background:var(--falta-f);border-color:#e39a9a}
+  input.lectura,select.lectura{background:#faf6fe;border-color:#c9a9e8}
+  .nota{font-size:11.5px;color:var(--suave);margin-top:4px}
+
+  #resumen{display:flex;align-items:center;gap:10px;padding:11px 15px;
+           border-radius:9px;margin-bottom:18px;font-size:13.5px}
+  #resumen.bien{background:var(--ok-f);color:var(--ok)}
+  #resumen.ojo{background:var(--aviso-f);color:var(--aviso)}
+  #resumen.mal{background:var(--falta-f);color:var(--falta)}
+  #resumen b{font-weight:700}
+
+  .avisos{margin-top:18px}
+  .aviso{background:var(--aviso-f);border-left:3px solid #e0a83a;
+         padding:10px 14px;border-radius:0 7px 7px 0;font-size:13px;margin-bottom:8px}
+  .aviso.grave{background:var(--falta-f);border-left-color:var(--falta)}
+
+  .acciones{display:flex;gap:12px;align-items:center;margin-top:22px}
+  button{font:inherit;font-weight:600;padding:11px 20px;border-radius:8px;
+         border:1px solid transparent;cursor:pointer}
+  .primario{background:var(--acento);color:#fff}
+  .primario:hover{background:#2a4a80}
+  .primario:disabled{background:#aab6c8;cursor:not-allowed}
+  .secundario{background:#fff;border-color:var(--linea);color:var(--tinta)}
+  .secundario:hover{background:#f0f3f8}
+  #estado{font-size:13px;color:var(--suave)}
+  .oculto{display:none}
+
+  /* ---------- preloader ---------- */
+  #cargando{background:var(--panel);border:1px solid var(--linea);border-radius:12px;
+            padding:34px 26px;margin-top:20px;text-align:center}
+  .spinner{width:46px;height:46px;margin:0 auto 18px;border-radius:50%;
+           border:4px solid #e3eaf5;border-top-color:var(--acento);
+           animation:girar .9s linear infinite}
+  @keyframes girar{to{transform:rotate(360deg)}}
+  #paso{font-weight:600;font-size:14.5px;margin-bottom:4px}
+  #subpaso{font-size:12.5px;color:var(--suave)}
+  .barra{height:5px;background:#e7edf6;border-radius:3px;overflow:hidden;
+         margin:18px auto 0;max-width:340px}
+  .barra i{display:block;height:100%;width:40%;border-radius:3px;
+           background:var(--acento);animation:correr 1.25s ease-in-out infinite}
+  @keyframes correr{0%{margin-left:-40%}100%{margin-left:100%}}
+  @media (prefers-reduced-motion:reduce){
+    .spinner{animation-duration:2.4s}
+    .barra i{animation:none;width:100%;opacity:.45}
+  }
+
+  /* ---------- error de conexión ---------- */
+  #caido{background:var(--falta-f);border:1px solid #f0c2c2;border-radius:12px;
+         padding:20px 24px;margin-top:20px}
+  #caido h3{margin:0 0 8px;color:var(--falta);font-size:14.5px;
+            text-transform:none;letter-spacing:0}
+  #caido p{margin:0 0 6px;font-size:13.5px}
+  #caido code{background:#fff;padding:2px 7px;border-radius:5px;
+              border:1px solid #f0c2c2;font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Expedientes GEDO → Excel</h1>
+  <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
+</header>
+
+<main>
+  <div id="zona">
+    <h2>Soltá acá los PDFs del expediente</h2>
+    <p>Carátula, declaración jurada, formulario T y dictamen — de a un expediente por vez</p>
+    <input type="file" id="archivos" accept="application/pdf" multiple class="oculto">
+  </div>
+
+  <section id="cargando" class="oculto">
+    <div class="spinner"></div>
+    <div id="paso">Preparando…</div>
+    <div id="subpaso">Esto puede tardar unos segundos si el expediente tiene páginas escaneadas.</div>
+    <div class="barra"><i></i></div>
+  </section>
+
+  <section id="caido" class="oculto">
+    <h3>No se pudo conectar con el sistema</h3>
+    <p>El programa que procesa los PDFs no está corriendo.</p>
+    <p>Abrí <code id="lanzador">Iniciar sistema</code> y volvé a intentar.</p>
+  </section>
+
+  <section id="resultado" class="oculto">
+    <div class="panel">
+      <h3>Documentos detectados</h3>
+      <div id="docs"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Datos del expediente — revisá antes de exportar</h3>
+      <div id="resumen"></div>
+    <div class="campos" id="campos"></div>
+      <div class="avisos" id="avisos"></div>
+      <div class="acciones">
+        <button class="primario" id="btn-guardar">Extraer datos a Excel</button>
+        <button class="secundario" id="btn-abrir">Abrir Excel</button>
+        <button class="secundario" id="btn-otro">Cargar otro expediente</button>
+        <span id="estado"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// el nombre del lanzador cambia segun el sistema; el destino real es Windows
+$("#lanzador").textContent = /win/i.test(navigator.platform || navigator.userAgent)
+  ? "Iniciar sistema.bat" : "Iniciar sistema.command";
+const zona = $("#zona"), input = $("#archivos");
+let actual = null, nombresArchivos = [];
+
+const ETIQUETA_TIPO = {
+  caratula:"Carátula", declaracion:"Declaración jurada",
+  formulario_t:"Formulario T", dictamen:"Dictamen / Informe",
+  desconocido:"No identificado"
+};
+const ETIQUETA_ESTADO = {
+  verificado:   "verificado en 2+ documentos",
+  una_fuente:   "una sola fuente",
+  revisar_lectura: "el escaneado se leyó distinto",
+  discrepancia: "NO COINCIDEN",
+  no_encontrado:"falta"
+};
+
+/* ------------------------------------------------ drag & drop ------------ */
+zona.addEventListener("click", () => input.click());
+input.addEventListener("change", e => procesar([...e.target.files]));
+["dragenter","dragover"].forEach(ev =>
+  zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add("activa"); }));
+["dragleave","drop"].forEach(ev =>
+  zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("activa"); }));
+zona.addEventListener("drop", e =>
+  procesar([...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith(".pdf"))));
+
+const aBase64 = f => new Promise(res => {
+  const r = new FileReader();
+  r.onload = () => res(r.result.split(",")[1]);
+  r.readAsDataURL(f);
+});
+
+async function procesar(files){
+  if(!files.length){ avisarVacio(); return; }
+  nombresArchivos = files.map(f => f.name);
+  mostrar("cargando");
+  fijarPaso("Preparando…", "Leyendo " + files.length + " archivo(s) desde el disco.");
+
+  try{
+    const archivos = [];
+    for(const f of files) archivos.push({nombre:f.name, contenido: await aBase64(f)});
+
+    const r = await fetch("/analizar", {method:"POST", body:JSON.stringify({archivos})});
+    const {id, error} = await r.json();
+    if(error) throw new Error(error);
+
+    const datos = await esperar(id);
+    actual = datos;
+    mostrar("resultado");
+    dibujar(datos);
+  }catch(e){
+    // fetch falla así cuando el servidor no está corriendo
+    if(e instanceof TypeError){ mostrar("caido"); return; }
+    mostrar(null);
+    alert("No se pudo procesar el expediente:\n\n" + e.message);
+  }
+}
+
+/* Consulta el progreso hasta que el análisis termina. El backend lo corre en
+   segundo plano justamente para poder informar en qué paso va. */
+function esperar(id){
+  return new Promise((resolver, rechazar) => {
+    const reloj = setInterval(async () => {
+      let est;
+      try{
+        est = await (await fetch("/progreso?id=" + id)).json();
+      }catch(e){ clearInterval(reloj); rechazar(e); return; }
+
+      if(est.paso) fijarPaso(est.paso);
+      if(est.estado === "listo"){ clearInterval(reloj); resolver(est.resultado); }
+      if(est.estado === "error"){ clearInterval(reloj); rechazar(new Error(est.error)); }
+      if(est.estado === "desconocido"){
+        clearInterval(reloj);
+        rechazar(new Error("Se perdió el análisis en curso. Probá de nuevo."));
+      }
+    }, 300);
+  });
+}
+
+function fijarPaso(texto, detalle){
+  $("#paso").textContent = texto;
+  if(detalle !== undefined) $("#subpaso").textContent = detalle;
+  else if(/Reconociendo/.test(texto))
+    $("#subpaso").textContent = "El formulario está escaneado, hay que leerlo como imagen.";
+}
+
+function mostrar(cual){
+  ["cargando","caido","resultado"].forEach(id =>
+    $("#" + id).classList.toggle("oculto", id !== cual));
+  if(cual) $("#" + cual).scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function avisarVacio(){
+  alert("No encontré PDFs en lo que soltaste. Arrastrá los archivos del expediente.");
+}
+
+/* ------------------------------------------------ render --------------- */
+function dibujar(d){
+  $("#docs").innerHTML = d.documentos.map(doc => `
+    <div class="doc">
+      <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
+      <span class="nom">${doc.nombre}</span>
+      ${doc.escaneadas ? `<span class="etq scan">${doc.escaneadas} pág. escaneada(s)</span>` : ""}
+      <span class="etq ${doc.firmas >= 2 ? "ok" : "mal"}">${doc.firmas} firma(s)</span>
+    </div>`).join("");
+
+  $("#campos").innerHTML = d.columnas.map(col => {
+    const c = d.campos[col.clave];
+    const ancho = ["expediente","descripcion","materia","carrera"]
+                    .includes(col.clave) ? " ancho" : "";
+    // lo que salió del OCR se resalta aparte: hay que contrastarlo con el PDF
+    const marca = (c.estado === "discrepancia" || c.estado === "no_encontrado")
+                ? " conflicto"
+                : c.estado === "revisar_lectura" ? " lectura"
+                : c.estado === "una_fuente" ? " pendiente" : "";
+    // si hay varias carreras aprendidas para este instituto+materia, se elige
+    let control;
+    if(col.clave === "carrera" && d.carreras_sugeridas.length > 1){
+      control = `<select id="f-carrera" class="pendiente">
+          <option value="">— elegí la carrera —</option>
+          ${d.carreras_sugeridas.map(x => `<option>${x}</option>`).join("")}
+        </select>`;
+    } else {
+      control = `<input id="f-${col.clave}" value="${(c.valor||"").replace(/"/g,"&quot;")}"
+                        class="${marca}">`;
+    }
+    return `<div class="campo${ancho}">
+        <label>${col.etiqueta}
+          <span class="estado e-${c.estado}">${ETIQUETA_ESTADO[c.estado]}</span>
+        </label>
+        ${control}
+        ${c.nota ? `<div class="nota">${c.nota}</div>` : ""}
+      </div>`;
+  }).join("");
+
+  // resumen de confianza: cuántos datos se pudieron contrastar entre documentos
+  const total = d.columnas.length;
+  const ver  = d.columnas.filter(c => d.campos[c.clave].estado === "verificado").length;
+  const conf = d.columnas.filter(c => d.campos[c.clave].estado === "discrepancia").length;
+  const caja = $("#resumen");
+  caja.className = conf ? "mal" : (ver === total ? "bien" : "ojo");
+  caja.innerHTML = conf
+    ? `<b>${conf} dato(s) no coinciden entre documentos.</b> Están marcados en rojo: revisá los PDFs y dejá el valor correcto.`
+    : `<b>${ver} de ${total} datos verificados</b> en dos o más documentos.` +
+      (ver < total ? ` Los ${total-ver} restantes aparecen en un solo lugar y no se pudieron contrastar.` : "");
+
+  const avisos = [...d.avisos];
+  if(d.duplicado) avisos.unshift("Este expediente YA está cargado. Si lo guardás, "
+                                 + "se actualiza la fila existente (no se duplica).");
+  $("#avisos").innerHTML = avisos.map(a =>
+    `<div class="aviso${/FALTAN|YA está/.test(a) ? " grave" : ""}">${a}</div>`).join("");
+
+  $("#resultado").classList.remove("oculto");
+  $("#resultado").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+/* ------------------------------------------------ acciones ------------- */
+$("#btn-guardar").addEventListener("click", async () => {
+  const valores = {};
+  actual.columnas.forEach(col => {
+    valores[col.clave] = ($("#f-" + col.clave)?.value || "").trim();
+  });
+  if(!valores.carrera && !confirm("La carrera está vacía. ¿Exportar igual?")) return;
+
+  $("#btn-guardar").disabled = true;
+  $("#estado").textContent = "Guardando…";
+  let res;
+  try{
+    const r = await fetch("/guardar", {method:"POST",
+      body: JSON.stringify({valores, archivos: nombresArchivos})});
+    res = await r.json();
+  }catch(e){
+    $("#btn-guardar").disabled = false;
+    $("#estado").textContent = "";
+    mostrar("caido");
+    return;
+  }
+  $("#btn-guardar").disabled = false;
+  if(res.error){ $("#estado").textContent = ""; alert(res.error); return; }
+  $("#estado").textContent = `Listo — ${res.total} expediente(s) en el Excel.`;
+});
+
+$("#btn-abrir").addEventListener("click", () =>
+  fetch("/abrir-excel", {method:"POST"}));
+
+$("#btn-otro").addEventListener("click", () => {
+  actual = null; input.value = "";
+  mostrar(null);
+  $("#estado").textContent = "";
+  window.scrollTo({top:0, behavior:"smooth"});
+});
+</script>
+</body>
+</html>

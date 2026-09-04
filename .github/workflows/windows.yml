@@ -1,0 +1,95 @@
+name: Instalador Windows
+
+# Se puede disparar a mano desde la pestaña Actions, o al etiquetar una version.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  compilar:
+    runs-on: windows-latest          # el runner Windows gratuito de GitHub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias de Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.11.1
+
+      - name: Instalar Tesseract
+        run: choco install tesseract --no-progress -y
+
+      - name: Preparar Tesseract para empaquetar
+        shell: pwsh
+        run: |
+          $origen = "C:\Program Files\Tesseract-OCR"
+          $destino = "motor\tesseract"
+          New-Item -ItemType Directory -Force -Path "$destino\tessdata" | Out-Null
+
+          # el ejecutable y sus DLL
+          Copy-Item "$origen\*" -Destination $destino -Recurse -Force -Exclude "tessdata"
+
+          # de los idiomas solo hacen falta estos: el pack completo pesa ~700 MB
+          foreach ($idioma in @("spa", "eng", "osd")) {
+            $archivo = "$origen\tessdata\$idioma.traineddata"
+            if (Test-Path $archivo) { Copy-Item $archivo "$destino\tessdata\" }
+          }
+
+          Write-Host "Contenido empaquetado:"
+          Get-ChildItem $destino -Recurse -File |
+            Measure-Object -Property Length -Sum |
+            ForEach-Object { "{0} archivos, {1:N1} MB" -f $_.Count, ($_.Sum/1MB) }
+
+      - name: Compilar con PyInstaller
+        run: pyinstaller motor/app.spec --noconfirm --distpath dist --workpath build
+
+      - name: Verificar que el ejecutable arranca
+        shell: pwsh
+        run: |
+          # Arranca el servidor y espera a que responda. Nada de Start-Sleep
+          # fijo: el ejecutable descomprime ~75 MB y el arranque varía bastante
+          # segun la maquina, asi que un tiempo fijo vuelve el CI inestable.
+          $proceso = Start-Process "dist\ExpedientesGEDO\ExpedientesGEDO.exe" -PassThru
+          $listo = $false
+          foreach ($intento in 1..30) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:8765/" -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) {
+                Write-Host "OK: respondió 200 tras $($intento * 2)s"
+                $listo = $true
+                break
+              }
+            } catch { }
+          }
+          Stop-Process -Id $proceso.Id -Force -ErrorAction SilentlyContinue
+          if (-not $listo) {
+            Write-Host "--- registro de la app ---"
+            Get-Content "$env:LOCALAPPDATA\ExpedientesGEDO\registro.txt" -EA SilentlyContinue
+            throw "El ejecutable no respondió en 60 segundos"
+          }
+
+      - name: Armar el instalador
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalador.iss
+
+      - name: Publicar el instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExpedientesGEDO-instalador
+          path: salida/*.exe
+          if-no-files-found: error
+
+      - name: Publicar la versión portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExpedientesGEDO-portable
+          path: dist/ExpedientesGEDO/
