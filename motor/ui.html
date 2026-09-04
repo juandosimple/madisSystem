@@ -43,10 +43,28 @@
   .etq.scan{background:var(--aviso-f);color:var(--aviso)}
 
   /* ---------- formulario de revisión ---------- */
-  .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px}
+  .cabecera-panel{display:flex;justify-content:space-between;align-items:baseline;
+                  gap:12px;margin-bottom:14px}
+  .cabecera-panel h3{margin:0}
+  .cabecera-panel .pista{font-size:12.5px;color:var(--suave)}
+
+  /* cada grupo de campos es una tarjeta con su título */
+  .grupo{border:1px solid var(--linea);border-radius:10px;padding:16px 18px 18px;
+         margin-bottom:14px;background:#fcfdff}
+  .grupo > h4{margin:0 0 13px;font-size:11px;font-weight:700;letter-spacing:.7px;
+              text-transform:uppercase;color:var(--suave)}
+  .campos{display:grid;grid-template-columns:repeat(2,1fr);gap:13px 20px}
   .campo.ancho{grid-column:1/-1}
+
+  /* la designación entra en una fila de campos cortos */
+  .compacto{display:flex;gap:14px;flex-wrap:wrap}
+  .compacto .campo{flex:0 0 auto;min-width:96px}
+  .compacto .campo.crece{flex:1 1 130px}
+  .compacto input{width:100%}
+
   label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
-  .estado{font-weight:400;font-size:11px;padding:1px 7px;border-radius:20px;margin-left:6px}
+  .estado{font-weight:400;font-size:11px;padding:2px 8px;border-radius:20px;
+          margin-left:6px;white-space:nowrap}
   .e-guardado{background:#eef0ff;color:#3b3fa8}
   .e-verificado{background:var(--ok-f);color:var(--ok)}
   .e-una_fuente{background:var(--aviso-f);color:var(--aviso)}
@@ -60,13 +78,40 @@
   input.conflicto,select.conflicto{background:var(--falta-f);border-color:#e39a9a}
   input.lectura,select.lectura{background:#faf6fe;border-color:#c9a9e8}
   .nota{font-size:11.5px;color:var(--suave);margin-top:4px}
+  /* las notas largas van al pie del grupo, no debajo de cada campo */
+  .notas-grupo{font-size:11.5px;color:var(--suave);margin-top:12px;
+               padding-top:11px;border-top:1px solid #eef1f6;line-height:1.55}
+  .notas-grupo b{color:var(--tinta);font-weight:600}
 
-  #resumen{display:flex;align-items:center;gap:10px;padding:11px 15px;
-           border-radius:9px;margin-bottom:18px;font-size:13.5px}
-  #resumen.bien{background:var(--ok-f);color:var(--ok)}
-  #resumen.ojo{background:var(--aviso-f);color:var(--aviso)}
-  #resumen.mal{background:var(--falta-f);color:var(--falta)}
-  #resumen b{font-weight:700}
+  /* el campo que necesita una decisión se destaca del resto */
+  .decidir{border:1px solid #d5c4ee;background:#faf7ff;border-radius:9px;
+           padding:13px 15px;margin-top:2px}
+  .decidir.grave{border-color:#e8b4b4;background:#fef7f7}
+  .decidir > label{margin-bottom:9px}
+
+  .resumen{display:flex;align-items:flex-start;gap:10px;padding:11px 15px;
+           border-radius:9px;margin-bottom:10px;font-size:13.5px;line-height:1.5}
+  .resumen .ico{flex:none;font-size:13px;line-height:1.4}
+  .resumen.bien{background:#f4f9f6;color:#20543f;border:1px solid #cfe6da}
+  .resumen.ojo{background:#faf7ff;color:#4b3a63;border:1px solid #ddcdf2}
+  .resumen.mal{background:var(--falta-f);color:#7a2020;border:1px solid #f0c2c2}
+  .resumen a{color:inherit;font-weight:600}
+
+  /* ---------- a dónde va la fila ---------- */
+  #destino{border:1px solid #cfe6da;background:#f6fbf8;border-radius:10px;
+           padding:14px 16px;margin-top:16px}
+  #destino .titulo{font-size:11px;font-weight:700;letter-spacing:.7px;
+                   text-transform:uppercase;color:var(--ok);margin-bottom:10px}
+  #destino table{width:100%;border-collapse:collapse;font-size:12px}
+  #destino th{text-align:left;font-weight:600;color:var(--suave);font-size:10.5px;
+              letter-spacing:.4px;text-transform:uppercase;padding:5px 8px;
+              border-bottom:1px solid #d9e9e0}
+  #destino td{padding:6px 8px;color:var(--suave);
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  #destino tr.esta td{color:var(--tinta);font-weight:600;background:#e7f4ec}
+  #destino .pie{font-size:12px;color:var(--suave);margin-top:9px}
+  #destino .pie b{color:var(--tinta)}
 
   .avisos{margin-top:18px}
   .aviso{background:var(--aviso-f);border-left:3px solid #e0a83a;
@@ -295,9 +340,13 @@
     </div>
 
     <div class="panel">
-      <h3>Datos del expediente — revisá antes de exportar</h3>
+      <div class="cabecera-panel">
+        <h3>Datos del expediente</h3>
+        <span class="pista">Revisá antes de exportar</span>
+      </div>
       <div id="resumen"></div>
-    <div class="campos" id="campos"></div>
+      <div id="campos"></div>
+      <div id="destino"></div>
       <div class="avisos" id="avisos"></div>
       <div id="corregir" class="oculto">
         <p><b>Este expediente no va a entrar al Excel.</b> Queda anotado como
@@ -471,6 +520,7 @@ function dibujar(d){
   if(d.columnas?.length) COLUMNAS_GUARDADAS = d.columnas;
   $("#corregir").classList.add("oculto");
   $("#btn-corregir").textContent = "Marcar para corregir";
+
   $("#docs").innerHTML = d.documentos.map(doc => `
     <div class="doc">
       <span class="etq tipo">${ETIQUETA_TIPO[doc.tipo] || doc.tipo}</span>
@@ -479,61 +529,94 @@ function dibujar(d){
       <span class="etq ${doc.firmas >= 2 ? "ok" : "mal"}">${doc.firmas} firma(s)</span>
     </div>`).join("");
 
-  $("#campos").innerHTML = d.columnas.map(col => {
-    const c = d.campos[col.clave];
-    const ancho = ["expediente","descripcion","materia","carrera"]
-                    .includes(col.clave) ? " ancho" : "";
-    // lo que salió del OCR se resalta aparte: hay que contrastarlo con el PDF
-    const marca = (c.estado === "discrepancia" || c.estado === "no_encontrado")
-                ? " conflicto"
-                : c.estado === "revisar_lectura" ? " lectura"
-                : c.estado === "una_fuente" ? " pendiente" : "";
-    // Cuando las fuentes se contradicen, la app NO elige: muestra los valores
-    // en juego y decide la persona. Elegir por mayoría sería inventar criterio
-    // sobre un documento administrativo.
-    let control;
-    if(c.opciones?.length > 1){
-      control = `<div class="eleccion">` + c.opciones.map((o, i) => `
-          <label class="opcion${o.valor === c.valor ? " elegida" : ""}">
-            <input type="radio" name="op-${col.clave}" value="${o.valor.replace(/"/g,"&quot;")}"
-                   ${o.valor === c.valor ? "checked" : ""}>
-            <span class="v">${o.valor}
-              <span class="q">según ${o.fuentes.join(", ")}</span></span>
-          </label>`).join("") + `
-          <input class="otro pendiente" id="f-${col.clave}"
-                 value="${(c.valor||"").replace(/"/g,"&quot;")}"
-                 placeholder="…o escribí el valor correcto">
-        </div>`;
-    } else if(col.clave === "carrera" && d.carreras_sugeridas.length > 1){
-      control = `<select id="f-carrera" class="pendiente">
-          <option value="">— elegí la carrera —</option>
-          ${d.carreras_sugeridas.map(x => `<option>${x}</option>`).join("")}
-        </select>`;
-    } else {
-      control = `<input id="f-${col.clave}" value="${(c.valor||"").replace(/"/g,"&quot;")}"
-                        class="${marca}">`;
-    }
-    return `<div class="campo${ancho}">
-        <label>${col.etiqueta}
-          <span class="estado e-${c.estado}">${ETIQUETA_ESTADO[c.estado]}</span>
-        </label>
-        ${control}
-        ${c.nota ? `<div class="nota">${c.nota}</div>` : ""}
-      </div>`;
+  // Los campos van agrupados por lo que significan. Sin grupos (por ejemplo al
+  // reabrir un expediente guardado) se cae a una sola lista.
+  const grupos = d.grupos?.length ? d.grupos
+    : [{titulo:"", claves: d.columnas.map(c => c.clave)}];
+  const etiquetaDe = c => (d.columnas.find(x => x.clave === c) || {}).etiqueta || c;
+
+  $("#campos").innerHTML = grupos.map(g => {
+    const compacto = g.titulo === "Designación";
+    const cuerpo = g.claves.map(clave => campoHTML(clave, etiquetaDe(clave),
+                                                   d.campos[clave], d, compacto))
+                           .filter(Boolean).join("");
+    // las explicaciones largas van al pie del grupo, no bajo cada campo
+    const notas = compacto ? g.claves
+        .filter(c => d.campos[c]?.nota && d.campos[c].valor)
+        .map(c => `<div><b>${etiquetaDe(c)}:</b> ${d.campos[c].nota}</div>`)
+        .join("") : "";
+    return `<section class="grupo">
+        ${g.titulo ? `<h4>${g.titulo}</h4>` : ""}
+        <div class="${compacto ? "compacto" : "campos"}">${cuerpo}</div>
+        ${notas ? `<div class="notas-grupo">${notas}</div>` : ""}
+      </section>`;
   }).join("");
 
-  // resumen de confianza: cuántos datos se pudieron contrastar entre documentos
-  const total = d.columnas.length;
-  const ver  = d.columnas.filter(c => d.campos[c.clave].estado === "verificado").length;
-  const conf = d.columnas.filter(c => d.campos[c.clave].estado === "discrepancia").length;
-  const caja = $("#resumen");
-  caja.className = conf ? "mal" : (ver === total ? "bien" : "ojo");
-  caja.innerHTML = conf
-    ? `<b>${conf} dato(s) no coinciden entre documentos.</b> Están marcados en rojo: revisá los PDFs y dejá el valor correcto.`
-    : `<b>${ver} de ${total} datos verificados</b> en dos o más documentos.` +
-      (ver < total ? ` Los ${total-ver} restantes aparecen en un solo lugar y no se pudieron contrastar.` : "");
+  cablearElecciones();
+  dibujarResumen(d, etiquetaDe);
+  dibujarDestino(d);
 
-  // al elegir una opción se vuelca al campo, que es lo que se guarda
+  $("#avisos").innerHTML = "";
+  $("#resultado").classList.remove("oculto");
+  mostrar("resultado");
+}
+
+const ICONO = {verificado:"✓", una_fuente:"•", revisar_lectura:"⚠",
+               discrepancia:"⚠", no_encontrado:"!", guardado:"•"};
+const CORTO = {verificado:"2+ docs", una_fuente:"1 fuente", revisar_lectura:"revisar",
+               discrepancia:"decidí", no_encontrado:"falta", guardado:"guardado"};
+
+function campoHTML(clave, etiqueta, c, d, compacto){
+  if(!c) return "";
+  const insignia = `<span class="estado e-${c.estado}">${ICONO[c.estado] || ""} ${
+      compacto ? (CORTO[c.estado] || c.estado) : ETIQUETA_ESTADO[c.estado]}</span>`;
+
+  // Cuando las fuentes se contradicen, la app NO elige: muestra los valores en
+  // juego y decide la persona.
+  if(c.opciones?.length > 1){
+    return `<div class="campo ancho decidir${c.estado === "discrepancia" ? " grave" : ""}"
+                 id="campo-${clave}">
+        <label>${etiqueta} ${insignia}</label>
+        <div class="eleccion">
+          ${c.opciones.map(o => `
+            <label class="opcion${o.valor === c.valor ? " elegida" : ""}">
+              <input type="radio" name="op-${clave}" value="${o.valor.replace(/"/g,"&quot;")}"
+                     ${o.valor === c.valor ? "checked" : ""}>
+              <span class="v">${o.valor}
+                <span class="q">según ${o.fuentes.join(", ")}</span></span>
+            </label>`).join("")}
+          <input class="otro pendiente" id="f-${clave}"
+                 value="${(c.valor||"").replace(/"/g,"&quot;")}"
+                 placeholder="…o escribí el valor correcto">
+        </div>
+        <div class="nota">${c.nota || ""}</div>
+      </div>`;
+  }
+
+  const marca = (c.estado === "discrepancia" || c.estado === "no_encontrado") ? " conflicto"
+              : c.estado === "revisar_lectura" ? " lectura"
+              : c.estado === "una_fuente" ? " pendiente" : "";
+  const ancho = !compacto && ["expediente","descripcion","materia","carrera"].includes(clave);
+  const crece = compacto && ["fecha_alta","fecha_cese"].includes(clave);
+
+  let control;
+  if(clave === "carrera" && d.carreras_sugeridas.length > 1){
+    control = `<select id="f-carrera" class="pendiente">
+        <option value="">— elegí la carrera —</option>
+        ${d.carreras_sugeridas.map(x => `<option>${x}</option>`).join("")}
+      </select>`;
+  } else {
+    control = `<input id="f-${clave}" value="${(c.valor||"").replace(/"/g,"&quot;")}"
+                      class="${marca}">`;
+  }
+  return `<div class="campo${ancho ? " ancho" : ""}${crece ? " crece" : ""}" id="campo-${clave}">
+      <label>${etiqueta} ${insignia}</label>
+      ${control}
+      ${!compacto && c.nota ? `<div class="nota">${c.nota}</div>` : ""}
+    </div>`;
+}
+
+function cablearElecciones(){
   $("#campos").querySelectorAll(".eleccion input[type=radio]").forEach(r => {
     r.addEventListener("change", e => {
       const caja = e.target.closest(".eleccion").querySelector(".otro");
@@ -542,15 +625,68 @@ function dibujar(d){
         .forEach(o => o.classList.toggle("elegida", o.contains(e.target)));
     });
   });
+}
 
-  const avisos = [...d.avisos];
-  if(d.duplicado) avisos.unshift("Este expediente YA está cargado. Si lo guardás, "
-                                 + "se actualiza la fila existente (no se duplica).");
-  $("#avisos").innerHTML = avisos.map(a =>
-    `<div class="aviso${/FALTAN|YA está/.test(a) ? " grave" : ""}">${a}</div>`).join("");
+/* Dos líneas: cuánto se pudo contrastar, y qué necesita una decisión tuya. */
+function dibujarResumen(d, etiquetaDe){
+  const total = d.columnas.length;
+  const cuenta = e => d.columnas.filter(c => d.campos[c.clave].estado === e).length;
+  const ver = cuenta("verificado");
+  const decidir = d.columnas.filter(c =>
+      ["discrepancia","revisar_lectura"].includes(d.campos[c.clave].estado));
 
-  $("#resultado").classList.remove("oculto");
-  $("#resultado").scrollIntoView({behavior:"smooth", block:"start"});
+  let html = `<div class="resumen ${ver === total ? "bien" : "bien"}">
+      <span class="ico">✓</span>
+      <span><b>${ver} de ${total} datos verificados</b> en dos o más documentos.` +
+      (ver < total ? ` Los ${total - ver} restantes aparecen en un solo lugar y
+        no se pudieron contrastar.` : "") + `</span></div>`;
+
+  if(decidir.length){
+    const cual = decidir[0];
+    const grave = d.campos[cual.clave].estado === "discrepancia";
+    html += `<div class="resumen ${grave ? "mal" : "ojo"}">
+        <span class="ico">⚠</span>
+        <span><b>${decidir.length} dato${decidir.length > 1 ? "s necesitan" : " necesita"} tu decisión:</b>
+          ${decidir.map(c => etiquetaDe(c.clave)).join(", ")}
+          ${grave ? "no coinciden entre documentos" : "se leyó distinto en el escaneado"}
+          → <a href="#campo-${cual.clave}">revisar</a></span></div>`;
+  }
+  if(d.duplicado){
+    html += `<div class="resumen ojo"><span class="ico">•</span>
+        <span>Este expediente <b>ya está cargado</b>. Si lo guardás, se actualiza
+        la fila existente (no se duplica).</span></div>`;
+  }
+  $("#resumen").innerHTML = html;
+}
+
+/* Dónde va a caer la fila. Ver el destino saca la duda de si se duplica. */
+function dibujarDestino(d){
+  const x = d.excel;
+  if(!x){ $("#destino").innerHTML = ""; return; }
+  const fila = x.fila || (x.total + 1);
+  const nuevas = x.fila ? x.ultimos
+                        : [...x.ultimos, {fila, es_este:true,
+                            expediente: d.campos.expediente.valor,
+                            apellido: d.campos.apellido.valor,
+                            nombre: d.campos.nombre.valor,
+                            dni: d.campos.dni.valor,
+                            carrera: d.campos.carrera.valor,
+                            fecha_alta: d.campos.fecha_alta.valor}];
+  $("#destino").innerHTML = `
+    <div class="titulo">Guardado en Excel · ${x.total} expediente(s) cargado(s)</div>
+    <table>
+      <tr><th></th><th>Expediente</th><th>Apellido</th><th>Nombre</th>
+          <th>DNI</th><th>Carrera</th><th>F. alta</th></tr>
+      ${nuevas.map(f => `<tr class="${f.es_este ? "esta" : ""}">
+          <td>${f.fila}</td><td>${f.expediente || "—"}</td>
+          <td>${f.apellido || "—"}</td><td>${f.nombre || "—"}</td>
+          <td>${f.dni || "—"}</td><td>${f.carrera || "—"}</td>
+          <td>${f.fecha_alta || "—"}</td></tr>`).join("")}
+    </table>
+    <div class="pie">${x.archivo} · hoja ${x.hoja} · este expediente es la
+      <b>fila ${fila} de ${x.fila ? x.total : x.total + 1}</b> ·
+      ${x.fila ? "si guardás se actualiza esa fila (no se duplica)"
+               : "se va a agregar al final"}</div>`;
 }
 
 /* ------------------------------------------------ acciones ------------- */

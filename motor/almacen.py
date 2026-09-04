@@ -161,6 +161,25 @@ def eliminar(expediente):
     return borrados
 
 
+def contexto_excel(expediente):
+    """Donde va a caer esta fila en el Excel, para poder mostrarlo antes de
+    guardar. Ver el destino evita la duda de si se duplica o se pisa."""
+    buenos = [f for f in _filas() if f[6] == "ok"]
+    fila = next((i for i, f in enumerate(buenos, start=1)
+                 if f[0] == expediente), None)
+    ultimos = [{"expediente": e,
+                "apellido": v.get("apellido", ""), "nombre": v.get("nombre", ""),
+                "dni": v.get("dni", ""), "carrera": v.get("carrera", ""),
+                "fecha_alta": v.get("fecha_alta", ""),
+                "fila": i, "es_este": e == expediente}
+               for i, (e, v, *_) in enumerate(buenos, start=1)][-2:]
+    return {"archivo": (BASE / "expedientes.xlsx").name,
+            "hoja": "Todos",
+            "total": len(buenos),
+            "fila": fila,                 # None si es nuevo
+            "ultimos": ultimos}
+
+
 def historial():
     """Los expedientes agrupados por mes de importación, del más nuevo al más
     viejo."""

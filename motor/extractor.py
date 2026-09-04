@@ -177,6 +177,15 @@ def elegir_prestacion(bloques, asignatura_buscada):
 
 
 # ------------------------------------------------------------ expediente ----
+# Los campos se muestran agrupados por lo que significan, no en una lista
+# plana: quien revisa mira "el docente" o "la designación", no campo 7.
+GRUPOS = [
+    ("Expediente",  ["instituto", "expediente", "descripcion"]),
+    ("Docente",     ["apellido", "nombre", "dni"]),
+    ("Cátedra",     ["materia", "carrera"]),
+    ("Designación", ["anio", "comision", "firmas", "fecha_alta", "fecha_cese"]),
+]
+
 COLUMNAS = [
     ("instituto",   "Instituto"),
     ("expediente",  "N° de expediente"),

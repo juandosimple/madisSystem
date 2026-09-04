@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from extractor import COLUMNAS, armar_expediente, _norm
+from extractor import COLUMNAS, GRUPOS, armar_expediente, _norm
 from rutas import EMPAQUETADA, abrir_archivo, carpeta_datos, recurso
 from version import VERSION
 import actualizador
@@ -227,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
 
         return {
             "columnas": [{"clave": k, "etiqueta": e} for k, e in COLUMNAS],
+            "grupos": [{"titulo": t, "claves": c} for t, c in GRUPOS],
+            "excel": almacen.contexto_excel(exp.c("expediente").valor),
             "campos": {k: {"valor": exp.c(k).valor, "estado": exp.c(k).estado,
                            "origen": exp.c(k).origen, "nota": exp.c(k).nota,
                            "opciones": exp.c(k).opciones}
