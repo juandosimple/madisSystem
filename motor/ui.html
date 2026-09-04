@@ -147,6 +147,29 @@
   .acciones .secundario{padding:14px 20px}
   .oculto{display:none}
 
+  /* ---------- visor de PDF ---------- */
+  /* Se abre al costado: el formulario sigue a la vista para cotejar. */
+  :root{--visor:min(48vw,760px)}
+  #visor{position:fixed;top:0;right:0;bottom:0;width:var(--visor);min-width:380px;
+         z-index:50;background:#fff;border-left:1px solid var(--linea);
+         box-shadow:-8px 0 28px rgba(16,32,46,.14);display:flex;flex-direction:column}
+  #visor.oculto{display:none}
+  .visor-barra{display:flex;align-items:center;gap:10px;padding:10px 14px;
+               border-bottom:1px solid var(--linea);background:#f7f9fc}
+  .visor-barra .nombre{flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+                       font-size:12px;white-space:nowrap;overflow:hidden;
+                       text-overflow:ellipsis}
+  .visor-barra .etq{flex:none;min-width:0}
+  #visor iframe{flex:1;border:0;width:100%;background:#525659}
+  /* con el visor abierto, cabecera y contenido se corren a la izquierda */
+  body.con-visor header{padding-right:var(--visor)}
+  body.con-visor header p{display:none}
+  body.con-visor header h1{white-space:nowrap}
+  body.con-visor main{margin-right:var(--visor)}
+  .doc .ver{margin-left:4px}
+  .doc.viendo{background:#eef3fb;margin:0 -8px;padding-left:8px;padding-right:8px;
+              border-radius:7px}
+
   /* ---------- aviso pasajero ---------- */
   #toast{position:fixed;left:50%;bottom:30px;z-index:60;max-width:min(560px,90vw);
          transform:translateX(-50%) translateY(14px);opacity:0;pointer-events:none;
@@ -384,6 +407,14 @@
   </section>
 </main>
 
+<aside id="visor" class="oculto" aria-label="Documento">
+  <div class="visor-barra">
+    <span class="etq tipo" id="visor-tipo"></span>
+    <span class="nombre" id="visor-nombre"></span>
+    <button class="mini" id="visor-cerrar" type="button">Cerrar</button>
+  </div>
+  <iframe id="visor-marco" title="PDF"></iframe>
+</aside>
 <div id="toast"></div>
 
 <script>
@@ -514,6 +545,7 @@ function fijarPaso(texto, detalle){
 const PANTALLAS_APARTE = {historial: "#btn-historial", ajustes: "#btn-ajustes"};
 
 function mostrar(cual, {sinZona = false} = {}){
+  if(cual !== "resultado") cerrarVisor();
   ["cargando","caido","resultado","historial","ajustes"].forEach(id =>
     $("#" + id).classList.toggle("oculto", id !== cual));
 
@@ -552,7 +584,10 @@ function dibujar(d){
       ${doc.escaneadas ? `<span class="etq scan">${doc.escaneadas} pág. escaneada(s)</span>` : ""}
       ${doc.firmas == null ? "" :
         `<span class="etq ${doc.firmas >= 2 ? "ok" : "mal"}">${doc.firmas} firma(s)</span>`}
+      ${doc.pdf === false ? "" :
+        `<button class="mini ver" type="button" data-ver="${doc.nombre.replace(/"/g,"&quot;")}">Ver PDF</button>`}
     </div>`).join("");
+  cerrarVisor();
 
   // Los campos van agrupados por lo que significan. Sin grupos (por ejemplo al
   // reabrir un expediente guardado) se cae a una sola lista.
@@ -949,7 +984,8 @@ $("#meses").addEventListener("click", async e => {
 
   if(borrar){
     if(!confirm(`¿Quitar ${borrar} del historial?\n\n` +
-                `Se borra la fila del Excel. Los PDFs no se tocan.`)) return;
+                `Se borra la fila del Excel y la copia de los PDFs que guarda la app. ` +
+                `Tus archivos originales no se tocan.`)) return;
     await fetch("/eliminar", {method:"POST",
       body: JSON.stringify({expediente: borrar})});
     await dibujarHistorial();
@@ -967,9 +1003,11 @@ function abrirGuardado(g){
     grupos: g.grupos || [],
     excel: g.excel || null,
     campos,
-    // de los PDFs solo queda el nombre: no se sabe cuántas firmas tenían
+    // de los PDFs queda el nombre y, si se guardó, una copia para verla
     documentos: (g.archivos || []).map(n => ({nombre:n, tipo:"guardado",
-                                              paginas:0, escaneadas:0, firmas:null})),
+                                              paginas:0, escaneadas:0, firmas:null,
+                                              pdf: (g.pdfs || []).includes(n)})),
+    expediente_guardado: g.expediente,
     avisos: [],
     carreras_sugeridas: [],
     duplicado: true,
@@ -983,6 +1021,36 @@ function abrirGuardado(g){
   mostrar("resultado", {sinZona:true});
   window.scrollTo({top:0, behavior:"smooth"});
 }
+
+/* Visor de PDF: el documento se abre al costado del formulario. */
+function abrirVisor(nombre){
+  const doc = (actual?.documentos || []).find(d => d.nombre === nombre);
+  if(!doc) return;
+  const url = "/pdf?nombre=" + encodeURIComponent(nombre) +
+              (actual.expediente_guardado
+                 ? "&expediente=" + encodeURIComponent(actual.expediente_guardado) : "");
+  $("#visor-marco").src = url + "#toolbar=1&navpanes=0";
+  $("#visor-nombre").textContent = nombre;
+  $("#visor-tipo").textContent = ETIQUETA_TIPO[doc.tipo] || doc.tipo;
+  $("#visor").classList.remove("oculto");
+  document.body.classList.add("con-visor");
+  $("#docs").querySelectorAll(".doc").forEach(f =>
+    f.classList.toggle("viendo", f.querySelector("[data-ver]")?.dataset.ver === nombre));
+}
+function cerrarVisor(){
+  $("#visor").classList.add("oculto");
+  $("#visor-marco").removeAttribute("src");
+  document.body.classList.remove("con-visor");
+  $("#docs").querySelectorAll(".doc.viendo").forEach(f => f.classList.remove("viendo"));
+}
+$("#docs").addEventListener("click", e => {
+  const nombre = e.target.closest("[data-ver]")?.dataset.ver;
+  if(nombre){ e.stopPropagation(); abrirVisor(nombre); }
+});
+$("#visor-cerrar").addEventListener("click", cerrarVisor);
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && !$("#visor").classList.contains("oculto")) cerrarVisor();
+});
 
 $("#btn-nuevo").addEventListener("click", nuevoExpediente);
 
@@ -998,6 +1066,7 @@ $("#docs-cabecera").addEventListener("click", () =>
 try{ plegarDocs(localStorage.getItem(PLEGADO) === "1"); }catch(e){}
 
 function nuevoExpediente(){
+  cerrarVisor();
   actual = null; input.value = "";
   mostrar(null);
   $("#corregir").classList.add("oculto");

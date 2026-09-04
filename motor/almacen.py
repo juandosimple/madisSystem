@@ -8,6 +8,8 @@ Esto evita duplicados, permite corregir un expediente viejo y elimina toda una
 clase de errores de corrupcion del archivo.
 """
 import json
+import re
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -158,7 +160,45 @@ def eliminar(expediente):
     cx.execute("DELETE FROM expedientes WHERE expediente = ?", (expediente,))
     borrados = cx.total_changes
     cx.commit(); cx.close()
+    if borrados:
+        shutil.rmtree(carpeta_pdfs(expediente), ignore_errors=True)
     return borrados
+
+
+# ------------------------------------------------------------------ PDFs --
+# Se guarda una copia de los PDFs de cada expediente para poder verlos desde
+# la app al reabrirlo, sin ir a buscarlos al disco. Pesan alrededor de 1 MB
+# cada uno; con cientos de expedientes siguen siendo unos pocos cientos de MB.
+
+def _nombre_seguro(nombre):
+    """Solo el nombre de archivo, sin carpetas ni caracteres raros."""
+    nombre = Path(nombre).name
+    return re.sub(r"[^\w.\- ()°º]", "_", nombre)
+
+
+def carpeta_pdfs(expediente):
+    return BASE / "pdfs" / _nombre_seguro(expediente)
+
+
+def guardar_pdfs(expediente, rutas):
+    """Copia los PDFs (nombre -> ruta) a la carpeta del expediente."""
+    destino = carpeta_pdfs(expediente)
+    destino.mkdir(parents=True, exist_ok=True)
+    for nombre, ruta in rutas.items():
+        ruta = Path(ruta)
+        if ruta.exists():
+            shutil.copyfile(ruta, destino / _nombre_seguro(nombre))
+
+
+def pdf_guardado(expediente, nombre):
+    """Ruta del PDF guardado, o None si no está."""
+    ruta = carpeta_pdfs(expediente) / _nombre_seguro(nombre)
+    return ruta if ruta.is_file() else None
+
+
+def pdfs_guardados(expediente):
+    carpeta = carpeta_pdfs(expediente)
+    return sorted(f.name for f in carpeta.glob("*.pdf")) if carpeta.is_dir() else []
 
 
 def contexto_excel(expediente):

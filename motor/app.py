@@ -39,6 +39,8 @@ PUERTO = 8765
 
 # analisis en curso: {id: {estado, paso, resultado, error}}
 TRABAJOS = {}
+# nombre -> ruta de los PDFs del último análisis (ver _servir_pdf)
+PDFS_ACTUALES = {}
 
 # La ventana avisa cada pocos segundos que sigue abierta. Es el unico modo
 # confiable de saberlo: en Windows el navegador delega la ventana en otro
@@ -96,6 +98,26 @@ class Handler(BaseHTTPRequestHandler):
         LATIDO["ultimo"] = time.time()
         LATIDO["hubo"] = True
         return True
+
+    def _servir_pdf(self):
+        """El PDF de un documento: del último análisis, o la copia guardada
+        junto al expediente si se pide con ?expediente=."""
+        consulta = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        nombre = Path(consulta.get("nombre", [""])[0]).name
+        expediente = consulta.get("expediente", [""])[0]
+        ruta = (almacen.pdf_guardado(expediente, nombre) if expediente
+                else PDFS_ACTUALES.get(nombre))
+        if not ruta or not Path(ruta).is_file():
+            self.send_error(404, "No está el PDF")
+            return
+        cuerpo = Path(ruta).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", "inline")
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(cuerpo)
 
     def _leer_json(self):
         n = int(self.headers.get("Content-Length", 0))
@@ -159,7 +181,10 @@ class Handler(BaseHTTPRequestHandler):
                 "columnas": [{"clave": k, "etiqueta": e} for k, e in COLUMNAS],
                 "grupos": [{"titulo": t, "claves": c} for t, c in GRUPOS],
                 "excel": almacen.contexto_excel(ident),
+                "pdfs": almacen.pdfs_guardados(ident),
             })
+        elif self.path.startswith("/pdf?"):
+            self._servir_pdf()
         else:
             self.send_error(404)
 
@@ -234,6 +259,11 @@ class Handler(BaseHTTPRequestHandler):
             destino.write_bytes(base64.b64decode(archivo["contenido"]))
             rutas.append(destino)
 
+        # los PDFs del último análisis quedan a mano para verlos desde la app
+        # y para copiarlos junto al expediente al guardar
+        PDFS_ACTUALES.clear()
+        PDFS_ACTUALES.update({r.name: r for r in rutas})
+
         exp = armar_expediente(rutas, almacen.tabla_carreras(),
                                progreso=progreso)
         clave = _norm(f"{exp.c('instituto').valor}|{exp.c('materia').valor}")
@@ -300,6 +330,8 @@ class Handler(BaseHTTPRequestHandler):
                                      valores.get("carrera"))
         almacen.guardar(expediente, valores, datos.get("archivos", []),
                         estado, observacion)
+        almacen.guardar_pdfs(expediente, {n: r for n, r in PDFS_ACTUALES.items()
+                                          if n in datos.get("archivos", [])})
         ruta = almacen.exportar_excel()
         return {"ok": True, "ruta": str(ruta), "estado": estado,
                 "total": len(almacen.listar(solo_ok=True)),
