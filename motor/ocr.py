@@ -29,6 +29,7 @@ GRIS = True
 # si alguno de estos falta tras el primer intento, vale la pena reintentar mas
 # fino: en un escaneo flojo la fecha de cese se lee a 300 y no a 200 (ni a 400).
 # fecha_cese no está acá: tiene su propio lector recortado, más preciso
+# el cese y el año/división tienen lector propio recortado, más preciso
 ESENCIALES = ("carrera", "asignatura", "apellido_nombre")
 CACHE = carpeta_datos() / "cache_ocr"
 CACHE.mkdir(parents=True, exist_ok=True)
@@ -131,7 +132,9 @@ PATRONES = {
     # vienen llenas con OTRA persona. La que sirve es la de la seccion 3.
     "apellido_nombre": r"DOCENTE\s+PROPUESTO[\s\S]{0,400}?APELLIDO\s+Y\s+NOMBRE"
                        r"\s*[:.]?\s*(.+?)\s+SEXO",
-    "asignatura":      r"(?m)^\s*ASIGNATURA\s*[:.]\s*(.+?)\s*$",
+    # el OCR deja basura al inicio del renglón (viñetas, restos del borde del
+    # recuadro): exigir que empiece con la etiqueta perdía el campo entero
+    "asignatura":      r"(?m)^[^\w\n]{0,6}ASIGNATURA\s*[:.]\s*(.+?)\s*$",
     "fecha_propuesta": r"FECHA\s+DE\s+LA\s+PROPUESTA\s*[:.]?[\s|\[\]_]*([\d\s\-/.]{6,12})",
     "codigo_estab":  r"CODIGO\s+DEL\s+ESTABLECIMIENTO\s*[:.]?\s*(\d{4,10})",
 }
@@ -166,6 +169,13 @@ def leer_formulario(ruta_pdf, paginas_escaneadas, progreso=None):
                 # se recorren TODAS las coincidencias y se toma la primera con
                 # contenido: los formularios repiten rotulos con casillas vacias.
                 for m in re.finditer(patron, texto, re.I | re.M):
+                    # algunos patrones capturan dos cosas juntas (año y división)
+                    if m.re.groups > 1:
+                        partes = tuple(_limpiar(g) for g in m.groups())
+                        if all(partes):
+                            hallazgos[campo] = partes
+                            break
+                        continue
                     valor = _limpiar(m.group(1))
                     if campo in CAMPOS_FECHA:
                         valor = normalizar_fecha(valor)
@@ -190,6 +200,7 @@ def leer_formulario(ruta_pdf, paginas_escaneadas, progreso=None):
 # a pagina completa el mismo campo se leyo "15/2/2026" a 200 DPI y "15/2/2028"
 # a 300. Recortando solo la casilla el resultado es estable y ademas mas rapido.
 DPIS_CESE = (200, 300, 400)
+DPI_UBICAR = 150       # solo para encontrar el rótulo, no para leer el valor
 
 
 def _tsv(png, psm="6", extra=None):
@@ -214,53 +225,73 @@ def _tsv(png, psm="6", extra=None):
     return palabras
 
 
-def _casilla_del_cese(pagina):
-    """El rectangulo a la derecha de 'FECHA DEL CESE:', donde va el valor."""
+def _casilla_a_la_derecha(pagina, patron, ancho=1.0, alto=2.2):
+    """Rectangulo con el VALOR que sigue a un rotulo del formulario.
+
+    Se ubica el rotulo por coordenadas y se recorta lo que tiene a la derecha.
+    Leer solo esa casilla es mucho mas preciso que leer la hoja entera: el mismo
+    campo llegaba a leerse distinto segun la resolucion, y ademas es mas rapido.
+    """
+    # Ubicar el rótulo no necesita la resolución con la que después se LEE el
+    # valor: los rótulos son grandes y se reconocen bien a 150, en la mitad de
+    # tiempo. La precisión se juega en el recorte, no acá.
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "hoja.png"
-        pix = pagina.get_pixmap(dpi=300, colorspace=fitz.csGRAY)
+        pix = pagina.get_pixmap(dpi=DPI_UBICAR, colorspace=fitz.csGRAY)
         pix.save(png)
         palabras = _tsv(png)
-    for i in range(len(palabras) - 2):
-        if (palabras[i]["t"].upper().startswith("FECHA")
-                and palabras[i + 1]["t"].upper().startswith("DEL")
-                and palabras[i + 2]["t"].upper().startswith("CESE")):
-            a = palabras[i + 2]
-            escala = pagina.rect.height / pix.height
-            return fitz.Rect(a["x"] * escala, (a["y"] - a["h"]) * escala,
-                             pix.width * escala, (a["y"] + a["h"] * 2.2) * escala)
+
+    rx = re.compile(patron, re.I)
+    for i, palabra in enumerate(palabras):
+        # el rotulo puede venir partido en varias palabras o pegado a la basura
+        tramo = " ".join(w["t"] for w in palabras[i:i + 4])
+        if not rx.search(tramo):
+            continue
+        m = rx.search(tramo)
+        # se busca en que palabra termina el rotulo, para recortar despues de esa
+        recorrido, ultima = 0, palabras[i]
+        for w in palabras[i:i + 4]:
+            recorrido += len(w["t"]) + 1
+            ultima = w
+            if recorrido >= m.end():
+                break
+        escala = pagina.rect.height / pix.height
+        derecha = min(pix.width, ultima["x"] + ultima["w"] * (1 + ancho * 12))
+        return fitz.Rect(ultima["x"] * escala,
+                         (ultima["y"] - ultima["h"]) * escala,
+                         derecha * escala,
+                         (ultima["y"] + ultima["h"] * alto) * escala)
     return None
 
 
-def _fecha_en_casilla(pagina, casilla, dpi):
+def _leer_recorte(pagina, casilla, dpi, permitidos):
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "casilla.png"
         pagina.get_pixmap(dpi=dpi, colorspace=fitz.csGRAY, clip=casilla).save(png)
         for psm in ("7", "6", "11"):     # linea suelta, bloque, texto disperso
-            texto = " ".join(w["t"] for w in _tsv(
-                png, psm, ["-c", "tessedit_char_whitelist=0123456789/-."]))
-            fecha = normalizar_fecha(texto)
-            if fecha:
-                return fecha
-    return ""
+            extra = ["-c", f"tessedit_char_whitelist={permitidos}"] if permitidos else []
+            texto = " ".join(w["t"] for w in _tsv(png, psm, extra))
+            if texto.strip():
+                yield texto
 
 
-def leer_cese(ruta_pdf):
-    """Devuelve (fecha, lecturas, coinciden).
+def leer_casilla(ruta_pdf, patron, permitidos, interpretar,
+                 pagina="ultima", clave="casilla"):
+    """Lee un campo suelto del formulario a varias resoluciones.
 
-    Se lee la misma casilla a varias resoluciones y se exige acuerdo: si dos
-    resoluciones distintas dicen lo mismo, el dato es confiable; si todas
-    difieren, se avisa en vez de elegir una al azar.
+    Devuelve (valor, lecturas, coinciden). Se exige que dos resoluciones digan
+    lo mismo: si todas difieren, el dato se informa como dudoso en vez de
+    elegir una al azar.
     """
     if not disponible():
         return "", {}, False
-    cache = _huella(ruta_pdf, "cese", "multi")
+    cache = _huella(ruta_pdf, clave, "multi")
     if cache.exists():
         try:
-            guardado = json.loads(cache.read_text(encoding="utf-8"))
-            return guardado["fecha"], guardado["lecturas"], guardado["coinciden"]
+            g = json.loads(cache.read_text(encoding="utf-8"))
+            return g["valor"], g["lecturas"], g["coinciden"]
         except (ValueError, KeyError, OSError):
-            cache.unlink(missing_ok=True)     # cache viejo o roto: se rehace
+            cache.unlink(missing_ok=True)
 
     doc = fitz.open(ruta_pdf)
     escaneadas = [i for i, p in enumerate(doc)
@@ -269,33 +300,57 @@ def leer_cese(ruta_pdf):
         doc.close()
         return "", {}, False
 
-    pagina = doc[escaneadas[-1]]          # el cese va en la última hoja
-    casilla = _casilla_del_cese(pagina)
+    hoja = doc[escaneadas[-1] if pagina == "ultima" else escaneadas[0]]
+    casilla = _casilla_a_la_derecha(hoja, patron)
     if casilla is None:
         doc.close()
         return "", {}, False
 
     lecturas = {}
     for dpi in DPIS_CESE:
-        fecha = _fecha_en_casilla(pagina, casilla, dpi)
-        if fecha:
-            lecturas[dpi] = fecha
-        # con dos resoluciones de acuerdo alcanza: no se sigue gastando tiempo
-        valores = list(lecturas.values())
-        if len(valores) >= 2 and len(set(valores)) == 1:
+        for texto in _leer_recorte(hoja, casilla, dpi, permitidos):
+            valor = interpretar(texto)
+            if valor:
+                lecturas[dpi] = valor
+                break
+        vistos = list(lecturas.values())
+        if len(vistos) >= 2 and len(set(map(str, vistos))) == 1:
             break
     doc.close()
 
     if not lecturas:
         return "", {}, False
     conteo = {}
-    for fecha in lecturas.values():
-        conteo[fecha] = conteo.get(fecha, 0) + 1
+    for v in lecturas.values():
+        conteo[str(v)] = conteo.get(str(v), 0) + 1
     ganadora = max(conteo, key=conteo.get)
-    resultado = (ganadora, lecturas, conteo[ganadora] >= 2)
-    cache.write_text(json.dumps({"fecha": resultado[0], "lecturas": lecturas,
+    valor = next(v for v in lecturas.values() if str(v) == ganadora)
+    resultado = (valor, lecturas, conteo[ganadora] >= 2)
+    cache.write_text(json.dumps({"valor": resultado[0], "lecturas": lecturas,
                                  "coinciden": resultado[2]}), encoding="utf-8")
     return resultado
+
+
+def _fecha(texto):
+    return normalizar_fecha(texto)
+
+
+def _anio_division(texto):
+    m = re.search(r"(\d)\s*[-/ ]?\s*([A-Z0-9])\b", texto.upper())
+    return list(m.groups()) if m else None
+
+
+def leer_cese(ruta_pdf):
+    return leer_casilla(ruta_pdf, r"FECHA\s+DEL\s+CESE", "0123456789/-.",
+                        _fecha, pagina="ultima", clave="cese")
+
+
+def leer_anio_division(ruta_pdf):
+    """Año y división van juntos en una casilla de la primera hoja."""
+    # el rótulo aparece como "AÑO/DIVISION" y también como "AÑO/DIV.:"
+    return leer_casilla(ruta_pdf, r"A[ÑN]O\s*[/.]?\s*DIV",
+                        "0123456789ABCDEFGH", _anio_division,
+                        pagina="primera", clave="aniodiv")
 
 
 def paginas_escaneadas_de(doc):

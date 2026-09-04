@@ -287,10 +287,21 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
             # El cese va aparte: se recorta su casilla en la última hoja del
             # formulario y se lee a varias resoluciones. A página completa el
             # mismo campo daba resultados distintos según el DPI.
-            avisar("Leyendo la fecha de cese del formulario…")
+            avisar("Leyendo las casillas del formulario…")
             fecha, lecturas, coinciden = _ocr.leer_cese(d.ruta)
             if fecha:
                 cese_ocr = (fecha, lecturas, coinciden)
+            # el año y la división viven en una casilla de la primera hoja y
+            # con frecuencia están vacíos: leerlos recortados evita reprocesar
+            # la página entera a alta resolución solo por si acaso
+            par, _lect, coincide_par = _ocr.leer_anio_division(d.ruta)
+            # Solo se acepta si dos resoluciones dijeron lo mismo. Una casilla
+            # vacía (con un guion de "no corresponde") hace que el OCR lea los
+            # bordes del recuadro como caracteres: en un caso real devolvió
+            # "2/D" a 200 DPI y nada a 300 y 400. Un valor inventado es peor
+            # que uno faltante.
+            if par and coincide_par:
+                leido.setdefault("anio_division", par)
 
     OCR_F = "formulario escaneado (OCR)"
     avisar("Cotejando los datos entre documentos…")
@@ -358,6 +369,11 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
         aportar("anio", elegida["curso"], "declaración jurada")
         aportar("comision", elegida["division"], "declaración jurada")
         aportar("fecha_alta", elegida["alta"], "declaración jurada")
+
+    if leido.get("anio_division"):
+        anio_ocr, division_ocr = leido["anio_division"]
+        aportar("anio", anio_ocr, OCR_F)
+        aportar("comision", division_ocr, OCR_F)
 
     if cara:
         # formato con etiquetas: "Asignatura: X Año: 1 División: A Hs: 6.00"
