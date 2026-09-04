@@ -88,6 +88,10 @@ Si se vacía ese campo, solo quedan *artifacts*: están al pie de la página de 
 corrida, caducan a los 90 días y NO aparecen en la solapa Releases. El resumen
 de cada corrida dice cuál de las dos cosas pasó.
 
+El release se publica ANTES de subir los artifacts, y los artifacts no pueden
+voltear la corrida: el servicio de artifacts de GitHub falla por timeout cada
+tanto, y una falla de red ahí no tiene por qué costar el entregable.
+
 Volver a ejecutar con una versión ya publicada reemplaza los archivos de ese
 release en lugar de fallar.
 

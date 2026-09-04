@@ -19,9 +19,9 @@ jobs:
     runs-on: windows-latest          # el runner Windows gratuito de GitHub
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -116,19 +116,6 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_ENV
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DVersion=$version instalador.iss
 
-      - name: Publicar el instalador
-        uses: actions/upload-artifact@v4
-        with:
-          name: ExpedientesGEDO-instalador
-          path: salida/*.exe
-          if-no-files-found: error
-
-      - name: Publicar la versión portable
-        uses: actions/upload-artifact@v4
-        with:
-          name: ExpedientesGEDO-portable
-          path: dist/ExpedientesGEDO/
-
       - name: Crear el release
         # con el default 1.0.0, un "Run workflow" sin tocar nada ya publica.
         # Solo se saltea si se vacía el campo a propósito.
@@ -201,3 +188,23 @@ jobs:
           indicando una versión (por ejemplo 1.0.0).
           "@ | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           Write-Host "Sin versión indicada: no se creó release (solo artifacts)."
+
+      # Los artifacts van DESPUÉS del release y no pueden voltear la corrida:
+      # el servicio de artifacts de GitHub falla por timeout cada tanto, y una
+      # falla de red ahí no tiene por qué costarnos el entregable.
+      - name: Publicar el instalador (artifact)
+        uses: actions/upload-artifact@v5
+        if: always()
+        continue-on-error: true
+        with:
+          name: ExpedientesGEDO-instalador
+          path: salida/*.exe
+          if-no-files-found: error
+
+      - name: Publicar la versión portable (artifact)
+        uses: actions/upload-artifact@v5
+        if: always()
+        continue-on-error: true
+        with:
+          name: ExpedientesGEDO-portable
+          path: dist/ExpedientesGEDO/
