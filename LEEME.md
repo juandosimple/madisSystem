@@ -41,6 +41,13 @@ Corregir un expediente NO cambia su mes: sigue archivado donde se cargó.
   Sobre el expediente de ejemplo, 12 de 13 campos quedan verificados.
 - El único dato sin segunda fuente es la **fecha de cese**: existe solo en la
   sección 5 del formulario escaneado. Se informa como tal, no se disimula.
+- **La fecha de cese se lee aparte.** Está siempre en la última hoja del
+  formulario "Solicitud de personal docente". En vez de OCRear la página
+  entera, se ubica el rótulo "FECHA DEL CESE" por coordenadas, se recorta solo
+  su casilla y se la lee a 200, 300 y 400 DPI hasta que dos coincidan. A página
+  completa el mismo campo daba "15/2/2026" a 200 DPI y "15/2/2028" a 300; con
+  el recorte da estable, y encima tarda menos. Si ninguna resolución coincide
+  con otra, el campo se marca en rojo con las lecturas obtenidas.
 - **La declaración jurada lista TODOS los cargos del docente**, no solo el de
   este expediente (se vio un caso con seis). Hay que elegir el bloque cuya
   asignatura coincide con la del formulario de designación. Tomar el primero

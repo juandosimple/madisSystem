@@ -73,7 +73,19 @@ def main():
         print(f"FALLA: {error}")
         return 1
 
+    # el cese tiene su propio lector: recorta la casilla en la última hoja
+    with tempfile.TemporaryDirectory() as tmp:
+        prueba = Path(tmp) / "formulario.pdf"
+        pdf_escaneado(prueba)
+        fecha, lecturas, coinciden = ocr.leer_cese(prueba)
+    estado = "ok" if fecha == ESPERADO["fecha_cese"] else "FALLA"
+    print(f"  {estado:5s} {'cese (recortado)':18s} {fecha or '(vacío)'} "
+          f"{'coincide a varias resoluciones' if coinciden else '(sin acuerdo)'}")
+
     fallas = []
+    if fecha != ESPERADO["fecha_cese"]:
+        fallas.append(f"lector de cese: esperaba {ESPERADO['fecha_cese']!r}, "
+                      f"obtuvo {fecha!r} (lecturas: {lecturas})")
     for campo, esperado in ESPERADO.items():
         obtenido = leido.get(campo, "")
         estado = "ok" if obtenido == esperado else "FALLA"

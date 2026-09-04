@@ -259,6 +259,7 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
             aportes.setdefault(clave, []).append((str(valor).strip(), fuente))
 
     # ---------------------------------------------------- OCR del formulario
+    cese_ocr = None
     leido = {}
     if usar_ocr:
         import ocr as _ocr
@@ -276,6 +277,14 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
                 exp.avisos.append(error)
             for k, v in hallado.items():
                 leido.setdefault(k, v)
+
+            # El cese va aparte: se recorta su casilla en la última hoja del
+            # formulario y se lee a varias resoluciones. A página completa el
+            # mismo campo daba resultados distintos según el DPI.
+            avisar("Leyendo la fecha de cese del formulario…")
+            fecha, lecturas, coinciden = _ocr.leer_cese(d.ruta)
+            if fecha:
+                cese_ocr = (fecha, lecturas, coinciden)
 
     OCR_F = "formulario escaneado (OCR)"
     avisar("Cotejando los datos entre documentos…")
@@ -362,7 +371,10 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
     fecha_cese, contexto = _buscar_cese(todo)
     if fecha_cese:
         aportar("fecha_cese", fecha_cese, f"capa de texto ({contexto})")
-    aportar("fecha_cese", leido.get("fecha_cese"), OCR_F)
+    if cese_ocr:
+        aportar("fecha_cese", cese_ocr[0], OCR_F + ", casilla del cese")
+    else:
+        aportar("fecha_cese", leido.get("fecha_cese"), OCR_F)
 
     # --------------------------------------------------------------- carrera
     if cara:
@@ -415,8 +427,21 @@ def armar_expediente(rutas, tabla_carreras=None, usar_ocr=True,
         exp.c("dni").set(dni, exp.c("dni").estado, "",
                          f"derivado del CUIL {cuil} · " + exp.c("dni").nota)
 
+    c = exp.c("fecha_cese")
+    if cese_ocr:
+        _fecha, lecturas, coinciden = cese_ocr
+        detalle = ", ".join(f"{dpi} DPI: {v}" for dpi, v in sorted(lecturas.items()))
+        if coinciden:
+            c.nota = (c.nota + f" · leído igual a dos resoluciones ({detalle})").strip(" ·")
+        else:
+            # no sabemos cuál es: eso no es "una sola fuente", es un conflicto
+            c.estado = DISCREPANCIA
+            c.nota = (c.nota + f" · LECTURA DUDOSA, cada resolución dio distinto "
+                               f"({detalle})").strip(" ·")
+            exp.avisos.append(
+                f"La fecha de cese se leyó distinto según la resolución ({detalle}). "
+                f"El escaneo no es claro: verificala contra el PDF y corregila.")
     if leido.get("motivo_cese"):
-        c = exp.c("fecha_cese")
         c.nota = (c.nota + " · motivo: " + leido["motivo_cese"]).strip(" ·")
 
     # ================================================================ avisos
