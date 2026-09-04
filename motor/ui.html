@@ -85,11 +85,12 @@
   .oculto{display:none}
 
   /* ---------- ajustes ---------- */
-  .engranaje{position:relative;background:none;border:none;color:#fff;opacity:.85;
-             cursor:pointer;padding:4px 6px;font-size:17px;line-height:1}
-  .engranaje:hover{opacity:1}
-  .engranaje .punto{position:absolute;top:2px;right:2px;width:8px;height:8px;
-                    border-radius:50%;background:#ffcc4d;border:1.5px solid var(--acento)}
+  .engranaje{position:relative;width:40px;height:40px;padding:0;
+             justify-content:center;font-size:20px}
+  .engranaje svg{width:21px;height:21px;display:block}
+  .engranaje .punto{position:absolute;top:5px;right:5px;width:10px;height:10px;
+                    border-radius:50%;background:#ffcc4d;
+                    border:2px solid var(--acento)}
   .fila{display:flex;align-items:flex-start;gap:14px;padding:15px 0;
         border-bottom:1px solid #eef1f6}
   .fila:last-child{border-bottom:none}
@@ -107,9 +108,13 @@
   /* ---------- historial ---------- */
   .barra-sup{display:flex;justify-content:space-between;align-items:center;
              max-width:1040px;margin:0 auto;padding:0 28px}
-  .enlace{background:none;border:none;color:#fff;opacity:.85;font:inherit;
-          font-size:13px;cursor:pointer;padding:6px 0;text-decoration:underline}
-  .enlace:hover{opacity:1}
+  /* botones de la cabecera: sobre fondo oscuro, con borde claro */
+  .btn-cabecera{display:inline-flex;align-items:center;gap:7px;font:inherit;
+                font-size:13px;font-weight:600;color:#fff;cursor:pointer;
+                background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);
+                border-radius:8px;padding:8px 14px;transition:.15s}
+  .btn-cabecera:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+  .btn-cabecera.activo{background:#fff;color:var(--acento);border-color:#fff}
   .mes{border:1px solid var(--linea);border-radius:10px;margin-bottom:12px;
        overflow:hidden;background:var(--panel)}
   .mes>summary{padding:12px 16px;cursor:pointer;font-weight:600;font-size:14px;
@@ -171,9 +176,16 @@
       <p>Soltá los PDFs de un expediente, revisá los datos y exportalos.</p>
     </div>
     <div style="display:flex;align-items:center;gap:16px">
-      <button class="enlace" id="btn-historial">Ver historial</button>
-      <button class="engranaje" id="btn-ajustes" title="Ajustes">⚙<span
-              class="punto oculto" id="punto-nuevo"></span></button>
+      <button class="btn-cabecera" id="btn-historial">Ver historial</button>
+      <button class="btn-cabecera engranaje" id="btn-ajustes" title="Ajustes"
+              aria-label="Ajustes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="punto oculto" id="punto-nuevo"></span>
+      </button>
     </div>
   </div>
 </header>
@@ -362,10 +374,25 @@ function fijarPaso(texto, detalle){
     $("#subpaso").textContent = "El formulario está escaneado, hay que leerlo como imagen.";
 }
 
+// Historial y ajustes reemplazan la pantalla de trabajo: dejar la zona de drop
+// visible detrás invitaría a soltar archivos sobre una pantalla que no los
+// espera. El botón correspondiente queda marcado para saber dónde se está.
+const PANTALLAS_APARTE = {historial: "#btn-historial", ajustes: "#btn-ajustes"};
+
 function mostrar(cual){
   ["cargando","caido","resultado","historial","ajustes"].forEach(id =>
     $("#" + id).classList.toggle("oculto", id !== cual));
-  if(cual) $("#" + cual).scrollIntoView({behavior:"smooth", block:"center"});
+
+  const aparte = cual in PANTALLAS_APARTE;
+  $("#zona").classList.toggle("oculto", aparte);
+  for(const [pantalla, boton] of Object.entries(PANTALLAS_APARTE)){
+    $(boton).classList.toggle("activo", cual === pantalla);
+  }
+
+  // Con la zona de drop oculta, historial y ajustes ya quedan arriba: desplazar
+  // solo sacaría la cabecera de vista, y con ella los botones para volver.
+  if(aparte) window.scrollTo({top:0, behavior:"smooth"});
+  else if(cual) $("#" + cual).scrollIntoView({behavior:"smooth", block:"center"});
 }
 
 function avisarVacio(){
